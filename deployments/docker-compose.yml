@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tomchat
+      POSTGRES_USER: tomchat
+      POSTGRES_PASSWORD: ${TOMCHAT_DB_PASSWORD:?Set TOMCHAT_DB_PASSWORD in the environment}
+    volumes:
+      - tomchat-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tomchat -d tomchat"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  tomchat-postgres:
