@@ -330,6 +330,23 @@ func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
 	if retried.ID != sent.ID {
 		t.Fatalf("idempotent retry returned %s, want %s", retried.ID, sent.ID)
 	}
+	var changedPayload messageSendPayload
+	if err := json.Unmarshal(sendBody, &changedPayload); err != nil {
+		t.Fatalf("decode retry payload: %v", err)
+	}
+	changedPayload.Ciphertext = base64.StdEncoding.EncodeToString([]byte("different-ciphertext"))
+	changedBody, _ := json.Marshal(changedPayload)
+	conflictRequest, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/conversations/"+created.ID+"/messages", bytes.NewReader(changedBody))
+	conflictRequest.Header.Set("Authorization", "Bearer "+aliceToken)
+	conflictRequest.Header.Set("Content-Type", "application/json")
+	conflictResponse, err := httpServer.Client().Do(conflictRequest)
+	if err != nil {
+		t.Fatalf("submit reused message ID with changed payload: %v", err)
+	}
+	conflictResponse.Body.Close()
+	if conflictResponse.StatusCode != http.StatusConflict {
+		t.Fatalf("changed payload with reused message ID: expected 409, got %d", conflictResponse.StatusCode)
+	}
 	var count int
 	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM messages WHERE conversation_id = $1", uuid.MustParse(created.ID)).Scan(&count); err != nil {
 		t.Fatalf("count persisted messages: %v", err)
