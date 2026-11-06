@@ -1,62 +1,42 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"log"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/Spruhantom/tomos-chat-server/internal/api"
 )
 
-type versionResponse struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
-
 func main() {
-	mux := http.NewServeMux()
+	databaseURL := os.Getenv("TOMCHAT_DATABASE_URL")
+	if databaseURL == "" {
+		log.Fatal("TOMCHAT_DATABASE_URL must be set")
+	}
+	pool, err := pgxpool.New(context.Background(), databaseURL)
+	if err != nil { log.Fatalf("configure database: %v", err) }
+	defer pool.Close()
 
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{
-			"status":  "ok",
-			"service": "tomchat-server",
-		})
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := pool.Ping(ctx); err != nil { log.Fatalf("connect to PostgreSQL: %v", err) }
 
-	mux.HandleFunc("GET /api/v1/version", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, versionResponse{
-			Name:    "TomChat Server",
-			Version: "0.1.0-dev",
-		})
-	})
+	registrationEnabled := os.Getenv("TOMCHAT_REGISTRATION_ENABLED") == "true"
+	handler := api.New(pool, registrationEnabled)
+	if err := handler.Migrate(); err != nil { log.Fatalf("database migrations: %v", err) }
 
 	addr := os.Getenv("TOMCHAT_LISTEN_ADDR")
-	if addr == "" {
-		addr = "127.0.0.1:8080"
-	}
+	if addr == "" { addr = "127.0.0.1:8080" }
 
 	server := &http.Server{
-		Addr:              addr,
-		Handler:           securityHeaders(mux),
-		ReadHeaderTimeout: 5 * time.Second,
+		Addr: addr,
+		Handler: handler.Handler(),
+		ReadHeaderTimeout: 5*time.Second,
+		IdleTimeout: 60*time.Second,
 	}
-
-	log.Printf("TomChat development server listening on %s", addr)
+	log.Printf("TomChat server listening on %s (registration enabled: %t)", addr, registrationEnabled)
 	log.Fatal(server.ListenAndServe())
-}
-
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(value); err != nil {
-		log.Printf("write JSON response: %v", err)
-	}
-}
-
-func securityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "no-referrer")
-		next.ServeHTTP(w, r)
-	})
 }
