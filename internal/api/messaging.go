@@ -271,7 +271,12 @@ func (a *API) listConversations(w http.ResponseWriter, r *http.Request) {
 		"JOIN conversation_members all_members ON all_members.conversation_id = c.id " +
 		"LEFT JOIN messages m ON m.conversation_id = c.id GROUP BY c.id " +
 		"ORDER BY COALESCE(MAX(m.created_at), c.created_at) DESC, c.id DESC"
-	rows, err := a.db.Query(r.Context(), query, current.ID)
+	currentID, err := uuid.Parse(current.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	rows, err := a.db.Query(r.Context(), query, currentID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error")
 		return
@@ -389,6 +394,10 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 	if err != nil {
 		return storedMessage{}, errInvalidMessage
 	}
+	senderID, err := uuid.Parse(sender.ID)
+	if err != nil {
+		return storedMessage{}, err
+	}
 	clientMessageID, err := uuid.Parse(input.ClientMessageID)
 	if err != nil || input.EncryptionVersion != 1 || len(input.KeyID) > 128 {
 		return storedMessage{}, errInvalidMessage
@@ -401,7 +410,7 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 	if err != nil || len(nonce) < 8 || len(nonce) > 32 {
 		return storedMessage{}, errInvalidMessage
 	}
-	if !a.isConversationMember(ctx, conversationID, sender.ID) {
+	if !a.isConversationMember(ctx, conversationID, senderID.String()) {
 		return storedMessage{}, errNotConversationMember
 	}
 	var item storedMessage
@@ -409,7 +418,7 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 		"VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, '')) ON CONFLICT (sender_id, client_message_id) DO NOTHING " +
 		"RETURNING id::text, sequence, conversation_id::text, sender_id::text, client_message_id::text, " +
 		"ciphertext, nonce, encryption_version, COALESCE(key_id, ''), created_at"
-	item, err = scanStoredMessage(a.db.QueryRow(ctx, insertQuery, uuid.New(), conversationID, sender.ID, clientMessageID, ciphertext, nonce, input.EncryptionVersion, input.KeyID))
+	item, err = scanStoredMessage(a.db.QueryRow(ctx, insertQuery, uuid.New(), conversationID, senderID, clientMessageID, ciphertext, nonce, input.EncryptionVersion, input.KeyID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		selectQuery := "SELECT id::text, sequence, conversation_id::text, sender_id::text, client_message_id::text, " +
 			"ciphertext, nonce, encryption_version, COALESCE(key_id, ''), created_at " +
@@ -442,7 +451,12 @@ func scanStoredMessage(row pgx.Row) (storedMessage, error) {
 }
 
 func (a *API) publishMessage(ctx context.Context, item storedMessage) {
-	rows, err := a.db.Query(ctx, "SELECT user_id::text FROM conversation_members WHERE conversation_id = $1", item.ConversationID)
+	conversationID, parseErr := uuid.Parse(item.ConversationID)
+	if parseErr != nil {
+		log.Printf("invalid conversation ID while publishing message: %v", parseErr)
+		return
+	}
+	rows, err := a.db.Query(ctx, "SELECT user_id::text FROM conversation_members WHERE conversation_id = $1", conversationID)
 	if err != nil {
 		log.Printf("load message recipients: %v", err)
 		return
@@ -489,8 +503,12 @@ func (a *API) writeMessageError(w http.ResponseWriter, err error) {
 }
 
 func (a *API) isConversationMember(ctx context.Context, conversationID uuid.UUID, userID string) bool {
+	parsedUserID, err := uuid.Parse(userID)
+	if err != nil {
+		return false
+	}
 	var member bool
-	err := a.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_id = $2)", conversationID, userID).Scan(&member)
+	err = a.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_id = $2)", conversationID, parsedUserID).Scan(&member)
 	return err == nil && member
 }
 
