@@ -10,6 +10,8 @@ Implemented:
 - Public/private registration switch
 - First-run administrator bootstrap
 - Login with random bearer tokens; only SHA-256 token hashes are stored
+- Basic in-memory login rate limiting: 10 attempts per source IP per minute
+- Bounded HTTP request/header timeouts
 - Authenticated current-user endpoint and logout
 - Database-backed health check
 
@@ -26,6 +28,8 @@ Optional:
 - `TOMCHAT_BOOTSTRAP_ADMIN_USERNAME` and `TOMCHAT_BOOTSTRAP_ADMIN_PASSWORD` — together, create the first administrator only when the database has no users
 
 The bootstrap credentials are ignored after the first account exists. Remove them from the service environment after successful first startup.
+
+Login rate limiting is per-process and resets on restart. It uses the TCP peer address and deliberately does not trust `X-Forwarded-For`. If deploying behind a reverse proxy or running multiple server instances, configure rate limiting at the trusted proxy/load balancer as well.
 
 ## Run
 
