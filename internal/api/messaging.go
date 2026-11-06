@@ -36,6 +36,7 @@ type conversation struct {
 	CreatedAt time.Time `json:"created_at"`
 	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
 	MemberCount int `json:"member_count"`
+	MemberIDs []string `json:"member_ids"`
 }
 
 type createConversationRequest struct {
@@ -283,10 +284,6 @@ func (a *API) listConversations(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal_error")
 			return
 		}
-		item.Ciphertext = base64.StdEncoding.EncodeToString(ciphertext)
-		item.Nonce = base64.StdEncoding.EncodeToString(nonce)
-		item.Ciphertext = base64.StdEncoding.EncodeToString(ciphertext)
-		item.Nonce = base64.StdEncoding.EncodeToString(nonce)
 		items = append(items, item)
 	}
 	if rows.Err() != nil {
@@ -346,6 +343,8 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal_error")
 			return
 		}
+		item.Ciphertext = base64.StdEncoding.EncodeToString(ciphertext)
+		item.Nonce = base64.StdEncoding.EncodeToString(nonce)
 		items = append(items, item)
 	}
 	if rows.Err() != nil {
