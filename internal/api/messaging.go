@@ -431,7 +431,11 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 		if err != nil {
 			return storedMessage{}, false, err
 		}
-		if item.ConversationID != conversationID.String() {
+		if item.ConversationID != conversationID.String() ||
+			item.Ciphertext != input.Ciphertext ||
+			item.Nonce != input.Nonce ||
+			item.EncryptionVersion != input.EncryptionVersion ||
+			item.KeyID != input.KeyID {
 			return storedMessage{}, false, errMessageIDConflict
 		}
 		return item, false, nil
