@@ -190,6 +190,7 @@ func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
 
 	alice, aliceToken := createAccount("alicechat")
 	bob, bobToken := createAccount("bobchat")
+	charlie, charlieToken := createAccount("charliechat")
 
 	createBody, _ := json.Marshal(createConversationRequest{Kind: "direct", MemberIDs: []string{bob.ID}})
 	createRequest, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/conversations", bytes.NewReader(createBody))
@@ -207,8 +208,36 @@ func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
 	if err := json.NewDecoder(createResponse.Body).Decode(&created); err != nil {
 		t.Fatalf("decode conversation: %v", err)
 	}
-	if created.MemberCount != 2 || created.Kind != "direct" {
+	if created.MemberCount != 2 || created.Kind != "direct" || len(created.MemberIDs) != 2 {
 		t.Fatalf("unexpected conversation: %+v", created)
+	}
+
+	conversationListRequest, _ := http.NewRequest(http.MethodGet, httpServer.URL+"/api/v1/conversations", nil)
+	conversationListRequest.Header.Set("Authorization", "Bearer "+aliceToken)
+	conversationListResponse, err := httpServer.Client().Do(conversationListRequest)
+	if err != nil {
+		t.Fatalf("list conversations: %v", err)
+	}
+	var conversationList struct {
+		Conversations []conversation
+	}
+	if err := json.NewDecoder(conversationListResponse.Body).Decode(&conversationList); err != nil {
+		t.Fatalf("decode conversation list: %v", err)
+	}
+	conversationListResponse.Body.Close()
+	if len(conversationList.Conversations) != 1 || len(conversationList.Conversations[0].MemberIDs) != 2 {
+		t.Fatalf("conversation list did not include members: %+v", conversationList)
+	}
+
+	unauthorizedHistoryRequest, _ := http.NewRequest(http.MethodGet, httpServer.URL+"/api/v1/conversations/"+created.ID+"/messages", nil)
+	unauthorizedHistoryRequest.Header.Set("Authorization", "Bearer "+charlieToken)
+	unauthorizedHistoryResponse, err := httpServer.Client().Do(unauthorizedHistoryRequest)
+	if err != nil {
+		t.Fatalf("request history as non-member: %v", err)
+	}
+	unauthorizedHistoryResponse.Body.Close()
+	if unauthorizedHistoryResponse.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-member history access: expected 403, got %d", unauthorizedHistoryResponse.StatusCode)
 	}
 
 	headers := http.Header{}
@@ -307,5 +336,62 @@ func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("stored %d messages after retry; want exactly one", count)
+	}
+
+	aliceHeaders := http.Header{}
+	aliceHeaders.Set("Authorization", "Bearer "+aliceToken)
+	aliceWS, _, err := websocket.DefaultDialer.Dial(wsURL, aliceHeaders)
+	if err != nil {
+		t.Fatalf("connect sender websocket: %v", err)
+	}
+	defer aliceWS.Close()
+
+	secondPayload, _ := json.Marshal(messageSendPayload{
+		ConversationID: created.ID,
+		ClientMessageID: uuid.NewString(),
+		Ciphertext: base64.StdEncoding.EncodeToString([]byte("second-opaque-ciphertext")),
+		Nonce: base64.StdEncoding.EncodeToString([]byte("abcdefghijkl")),
+		EncryptionVersion: 1,
+	})
+	requestID := uuid.NewString()
+	if err := aliceWS.WriteJSON(wsEnvelope{
+		Version: 1, Event: "message.send", RequestID: requestID, Payload: secondPayload,
+	}); err != nil {
+		t.Fatalf("send websocket message: %v", err)
+	}
+
+	_ = aliceWS.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var senderDelivery wsEnvelope
+	if err := aliceWS.ReadJSON(&senderDelivery); err != nil {
+		t.Fatalf("read sender delivery event: %v", err)
+	}
+	if senderDelivery.Event != "message.deliver" {
+		t.Fatalf("sender expected message.deliver first, got %s", senderDelivery.Event)
+	}
+	var senderAck wsEnvelope
+	if err := aliceWS.ReadJSON(&senderAck); err != nil {
+		t.Fatalf("read sender acknowledgement: %v", err)
+	}
+	if senderAck.Event != "message.ack" || senderAck.RequestID != requestID {
+		t.Fatalf("unexpected sender acknowledgement: %+v", senderAck)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var secondDelivery wsEnvelope
+	if err := conn.ReadJSON(&secondDelivery); err != nil {
+		t.Fatalf("read second websocket delivery: %v", err)
+	}
+	var secondMessage storedMessage
+	if err := json.Unmarshal(secondDelivery.Payload, &secondMessage); err != nil {
+		t.Fatalf("decode second websocket delivery: %v", err)
+	}
+	if secondDelivery.Event != "message.deliver" || secondMessage.Ciphertext != base64.StdEncoding.EncodeToString([]byte("second-opaque-ciphertext")) {
+		t.Fatalf("unexpected second websocket message: %+v", secondMessage)
+	}
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM messages WHERE conversation_id = $1", created.ID).Scan(&count); err != nil {
+		t.Fatalf("count websocket-persisted messages: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("stored %d messages after websocket send; want 2", count)
 	}
 }
