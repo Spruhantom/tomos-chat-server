@@ -10,7 +10,23 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      TOMCHAT_TEST_DATABASE_URL: postgres://tomchat:tomchat-test-password@localhost:5432/tomchat_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tomchat
+          POSTGRES_PASSWORD: tomchat-test-password
+          POSTGRES_DB: tomchat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tomchat -d tomchat_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -22,7 +38,11 @@ jobs:
       - name: Resolve and verify Go modules
         run: go mod tidy
       - name: Format Go source
-        run: gofmt -w .
+        run: |
+          gofmt -w .
+          test -z "$(gofmt -l .)"
+      - name: Verify dependency checksums
+        run: go mod verify
       - name: Run static analysis
         run: go vet ./...
       - name: Run race-enabled tests
