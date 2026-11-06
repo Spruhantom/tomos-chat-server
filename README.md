@@ -2,7 +2,7 @@
 
 Self-hosted TomChat backend for Debian 13.
 
-## Stage 2: Authentication foundation
+## Stage 3: Conversations and realtime encrypted-message transport
 
 Implemented:
 - PostgreSQL-backed accounts and sessions
@@ -14,8 +14,13 @@ Implemented:
 - Bounded HTTP request/header timeouts
 - Authenticated current-user endpoint and logout
 - Database-backed health check
+- Direct and group conversation creation (2–100 members)
+- PostgreSQL message persistence with per-conversation sequence cursors and paginated history
+- Authenticated WebSocket delivery with session-bound sockets, ping/pong, per-user connection caps and bounded queues
+- Idempotent message submission using client-generated message IDs
+- Opaque ciphertext and nonce storage; server does not decrypt message bodies
 
-Not implemented yet: message persistence, WebSocket delivery, admin web UI, account recovery, rate limiting, device keys, end-to-end encryption, and voice/video calls. Do not expose this service directly to the public internet until TLS, rate limiting, monitoring, and a security review are in place.
+Not implemented yet: client-side cryptography and device-key distribution, admin web UI, account recovery, multi-instance WebSocket fan-out, and voice/video calls. Do not expose this service directly to the public internet until TLS, rate limiting, monitoring, and a security review are in place.
 
 ## Configuration
 
@@ -41,7 +46,13 @@ export TOMCHAT_BOOTSTRAP_ADMIN_PASSWORD='use-a-long-unique-password-here'
 go run ./cmd/tomchat-server
 ```
 
-The server applies its initial idempotent schema on startup.
+The server applies its idempotent schema on startup, including conversations, membership and encrypted message tables.
+
+### Messaging payloads
+
+Message requests contain a client-generated UUID, base64 ciphertext, base64 nonce, encryption version 1 and an optional key ID. The server stores the ciphertext as opaque bytes and never accepts a plaintext message field. Clients must encrypt before sending; the current client has not yet implemented the cryptographic protocol, so this is an E2EE-ready transport boundary rather than a complete E2EE system.
+
+WebSocket events are documented in the TomChat Protocol repository. The current realtime hub is process-local and intended for one home-server instance. PostgreSQL is the source of truth; clients recover missed events by fetching message history. Do not horizontally scale this version without adding shared pub/sub.
 
 ## API
 
@@ -52,6 +63,11 @@ The server applies its initial idempotent schema on startup.
 - `POST /api/v1/auth/login`
 - `GET /api/v1/users/me` (Bearer token)
 - `POST /api/v1/auth/logout` (Bearer token)
+- `GET /api/v1/conversations` (Bearer token)
+- `POST /api/v1/conversations` (Bearer token)
+- `GET /api/v1/conversations/{conversationID}/messages?limit=50&before={sequence}` (Bearer token)
+- `POST /api/v1/conversations/{conversationID}/messages` (Bearer token)
+- `GET /api/v1/ws` (WebSocket upgrade with Bearer token)
 
 Passwords must be 12–256 characters. Usernames are 3–32 ASCII letters, digits, dots, underscores, or hyphens. Login sessions expire after 24 hours.
 
