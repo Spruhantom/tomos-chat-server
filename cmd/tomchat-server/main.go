@@ -27,6 +27,17 @@ func main() {
 	registrationEnabled := os.Getenv("TOMCHAT_REGISTRATION_ENABLED") == "true"
 	handler := api.New(pool, registrationEnabled)
 	if err := handler.Migrate(); err != nil { log.Fatalf("database migrations: %v", err) }
+	adminUser := os.Getenv("TOMCHAT_BOOTSTRAP_ADMIN_USERNAME")
+	adminPass := os.Getenv("TOMCHAT_BOOTSTRAP_ADMIN_PASSWORD")
+	if (adminUser == "") != (adminPass == "") {
+		log.Fatal("set both TOMCHAT_BOOTSTRAP_ADMIN_USERNAME and TOMCHAT_BOOTSTRAP_ADMIN_PASSWORD, or neither")
+	}
+	if adminUser != "" {
+		if err := handler.BootstrapAdmin(context.Background(), adminUser, adminPass); err != nil {
+			log.Fatalf("bootstrap administrator: %v", err)
+		}
+		log.Printf("administrator bootstrap checked (only creates an admin when no users exist)")
+	}
 
 	addr := os.Getenv("TOMCHAT_LISTEN_ADDR")
 	if addr == "" { addr = "127.0.0.1:8080" }
