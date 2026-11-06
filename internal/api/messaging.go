@@ -25,7 +25,7 @@ var (
 )
 
 const (
-	maxCiphertextBytes = 48 * 1024
+	maxCiphertextBytes = 40 * 1024
 	maxWebSocketFrameBytes = 64 * 1024
 )
 
@@ -251,7 +251,11 @@ func (a *API) createConversation(w http.ResponseWriter, r *http.Request) {
 	if input.Title != "" {
 		responseTitle = &input.Title
 	}
-	writeJSON(w, http.StatusCreated, conversation{ID: id.String(), Kind: input.Kind, Title: responseTitle, CreatedAt: createdAt, MemberCount: len(memberIDs)})
+	memberIDStrings := make([]string, 0, len(memberIDs))
+	for _, memberID := range memberIDs {
+		memberIDStrings = append(memberIDStrings, memberID.String())
+	}
+	writeJSON(w, http.StatusCreated, conversation{ID: id.String(), Kind: input.Kind, Title: responseTitle, CreatedAt: createdAt, MemberCount: len(memberIDs), MemberIDs: memberIDStrings})
 }
 
 func (a *API) listConversations(w http.ResponseWriter, r *http.Request) {
@@ -260,7 +264,8 @@ func (a *API) listConversations(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "authentication_required")
 		return
 	}
-	query := "SELECT c.id::text, c.kind, c.title, c.created_at, MAX(m.created_at), COUNT(DISTINCT all_members.user_id) " +
+	query := "SELECT c.id::text, c.kind, c.title, c.created_at, MAX(m.created_at), COUNT(DISTINCT all_members.user_id), " +
+		"ARRAY_AGG(DISTINCT all_members.user_id::text) " +
 		"FROM conversations c JOIN conversation_members mine ON mine.conversation_id = c.id AND mine.user_id = $1 " +
 		"JOIN conversation_members all_members ON all_members.conversation_id = c.id " +
 		"LEFT JOIN messages m ON m.conversation_id = c.id GROUP BY c.id " +
@@ -274,7 +279,7 @@ func (a *API) listConversations(w http.ResponseWriter, r *http.Request) {
 	items := make([]conversation, 0)
 	for rows.Next() {
 		var item conversation
-		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.CreatedAt, &item.LastMessageAt, &item.MemberCount); err != nil {
+		if err := rows.Scan(&item.ID, &item.Kind, &item.Title, &item.CreatedAt, &item.LastMessageAt, &item.MemberCount, &item.MemberIDs); err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error")
 			return
 		}
