@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"strconv"
 	"testing"
 	"time"
 
@@ -404,6 +405,37 @@ func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
 	}
 	if secondDelivery.Event != "message.deliver" || secondMessage.Ciphertext != base64.StdEncoding.EncodeToString([]byte("second-opaque-ciphertext")) {
 		t.Fatalf("unexpected second websocket message: %+v", secondMessage)
+	}
+
+	// Forward cursors let clients recover messages created while disconnected.
+	afterURL := httpServer.URL + "/api/v1/conversations/" + created.ID +
+		"/messages?limit=1&after=" + strconv.FormatInt(sent.Sequence, 10)
+	afterRequest, _ := http.NewRequest(http.MethodGet, afterURL, nil)
+	afterRequest.Header.Set("Authorization", "Bearer "+bobToken)
+	afterResponse, err := httpServer.Client().Do(afterRequest)
+	if err != nil {
+		t.Fatalf("load messages after cursor: %v", err)
+	}
+	var afterPage messagePage
+	if err := json.NewDecoder(afterResponse.Body).Decode(&afterPage); err != nil {
+		t.Fatalf("decode forward history page: %v", err)
+	}
+	afterResponse.Body.Close()
+	if afterResponse.StatusCode != http.StatusOK || len(afterPage.Messages) != 1 ||
+		afterPage.Messages[0].ID != secondMessage.ID || afterPage.NextAfter != secondMessage.Sequence {
+		t.Fatalf("forward cursor returned unexpected page: status=%d page=%+v", afterResponse.StatusCode, afterPage)
+	}
+
+	invalidCursorRequest, _ := http.NewRequest(http.MethodGet,
+		httpServer.URL+"/api/v1/conversations/"+created.ID+"/messages?before=1&after=1", nil)
+	invalidCursorRequest.Header.Set("Authorization", "Bearer "+bobToken)
+	invalidCursorResponse, err := httpServer.Client().Do(invalidCursorRequest)
+	if err != nil {
+		t.Fatalf("request conflicting history cursors: %v", err)
+	}
+	invalidCursorResponse.Body.Close()
+	if invalidCursorResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("conflicting before/after cursors: expected 400, got %d", invalidCursorResponse.StatusCode)
 	}
 	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM messages WHERE conversation_id = $1", created.ID).Scan(&count); err != nil {
 		t.Fatalf("count websocket-persisted messages: %v", err)

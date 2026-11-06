@@ -70,6 +70,7 @@ type storedMessage struct {
 type messagePage struct {
 	Messages []storedMessage `json:"messages"`
 	NextBefore int64 `json:"next_before,omitempty"`
+	NextAfter int64 `json:"next_after,omitempty"`
 }
 
 type wsEnvelope struct {
@@ -321,20 +322,42 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var before any
-	if raw := r.URL.Query().Get("before"); raw != "" {
-		value, parseErr := strconv.ParseInt(raw, 10, 64)
+	var before, after any
+	beforeRaw := r.URL.Query().Get("before")
+	afterRaw := r.URL.Query().Get("after")
+	if beforeRaw != "" && afterRaw != "" {
+		writeError(w, http.StatusBadRequest, "invalid_message_cursor")
+		return
+	}
+	if beforeRaw != "" {
+		value, parseErr := strconv.ParseInt(beforeRaw, 10, 64)
 		if parseErr != nil || value < 1 {
 			writeError(w, http.StatusBadRequest, "invalid_message_cursor")
 			return
 		}
 		before = value
 	}
+	if afterRaw != "" {
+		value, parseErr := strconv.ParseInt(afterRaw, 10, 64)
+		if parseErr != nil || value < 1 {
+			writeError(w, http.StatusBadRequest, "invalid_message_cursor")
+			return
+		}
+		after = value
+	}
+
 	query := "SELECT id::text, sequence, conversation_id::text, sender_id::text, client_message_id::text, " +
-		"ciphertext, nonce, encryption_version, COALESCE(key_id, ''), created_at " +
-		"FROM messages WHERE conversation_id = $1 AND sequence < COALESCE($2::bigint, 9223372036854775807) " +
-		"ORDER BY sequence DESC LIMIT $3"
-	rows, err := a.db.Query(r.Context(), query, conversationID, before, limit)
+		"ciphertext, nonce, encryption_version, COALESCE(key_id, ''), created_at FROM messages WHERE conversation_id = $1 "
+	if after != nil {
+		query += "AND sequence > $2 ORDER BY sequence ASC LIMIT $3"
+	} else {
+		query += "AND sequence < COALESCE($2::bigint, 9223372036854775807) ORDER BY sequence DESC LIMIT $3"
+	}
+	cursor := before
+	if after != nil {
+		cursor = after
+	}
+	rows, err := a.db.Query(r.Context(), query, conversationID, cursor, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error")
 		return
@@ -356,12 +379,18 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
-		items[left], items[right] = items[right], items[left]
+	if after == nil {
+		for left, right := 0, len(items)-1; left < right; left, right = left+1, right-1 {
+			items[left], items[right] = items[right], items[left]
+		}
 	}
 	page := messagePage{Messages: items}
 	if len(items) == int(limit) {
-		page.NextBefore = items[0].Sequence
+		if after != nil {
+			page.NextAfter = items[len(items)-1].Sequence
+		} else {
+			page.NextBefore = items[0].Sequence
+		}
 	}
 	writeJSON(w, http.StatusOK, page)
 }
