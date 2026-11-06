@@ -54,5 +54,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tomchat-server-go-sum
-          path: go.sum
+          path: |
+            go.mod
+            go.sum
           if-no-files-found: error
