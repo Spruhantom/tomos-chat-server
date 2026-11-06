@@ -280,6 +280,8 @@ func (a *API) listConversations(w http.ResponseWriter, r *http.Request) {
 		}
 		item.Ciphertext = base64.StdEncoding.EncodeToString(ciphertext)
 		item.Nonce = base64.StdEncoding.EncodeToString(nonce)
+		item.Ciphertext = base64.StdEncoding.EncodeToString(ciphertext)
+		item.Nonce = base64.StdEncoding.EncodeToString(nonce)
 		items = append(items, item)
 	}
 	if rows.Err() != nil {
@@ -406,7 +408,7 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 	item, err = scanStoredMessage(a.db.QueryRow(ctx, insertQuery, uuid.New(), conversationID, sender.ID, clientMessageID, ciphertext, nonce, input.EncryptionVersion, input.KeyID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		selectQuery := "SELECT id::text, sequence, conversation_id::text, sender_id::text, client_message_id::text, " +
-			"encode(ciphertext, 'base64'), encode(nonce, 'base64'), encryption_version, COALESCE(key_id, ''), created_at " +
+			"ciphertext, nonce, encryption_version, COALESCE(key_id, ''), created_at " +
 			"FROM messages WHERE sender_id = $1 AND client_message_id = $2"
 		item, err = scanStoredMessage(a.db.QueryRow(ctx, selectQuery, sender.ID, clientMessageID))
 		if err != nil {
