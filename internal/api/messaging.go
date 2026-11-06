@@ -423,7 +423,7 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 		selectQuery := "SELECT id::text, sequence, conversation_id::text, sender_id::text, client_message_id::text, " +
 			"ciphertext, nonce, encryption_version, COALESCE(key_id, ''), created_at " +
 			"FROM messages WHERE sender_id = $1 AND client_message_id = $2"
-		item, err = scanStoredMessage(a.db.QueryRow(ctx, selectQuery, sender.ID, clientMessageID))
+		item, err = scanStoredMessage(a.db.QueryRow(ctx, selectQuery, senderID, clientMessageID))
 		if err != nil {
 			return storedMessage{}, err
 		}
