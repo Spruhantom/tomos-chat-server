@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/argon2"
 )
@@ -69,17 +70,34 @@ func (a *API) BootstrapAdmin(ctx context.Context, username, password string) err
 	if !usernamePattern.MatchString(username) || len(password) < 12 || len(password) > 256 {
 		return errors.New("bootstrap administrator credentials do not meet policy")
 	}
+	tx, err := a.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Serialize bootstrap attempts so simultaneous server starts cannot create
+	// more than one initial administrator.
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(72190420261106)"); err != nil {
+		return err
+	}
 	var count int
-	if err := a.db.QueryRow(ctx, "SELECT COUNT(*) FROM users").Scan(&count); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT COUNT(*) FROM users").Scan(&count); err != nil {
 		return err
 	}
 	if count > 0 {
-		return nil
+		return tx.Commit(ctx)
 	}
-	_, err := a.db.Exec(ctx,
+	hash, err := hashPassword(password)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx,
 		"INSERT INTO users (id, username, password_hash, role) VALUES ($1, $2, $3, 'admin')",
-		uuid.New(), username, hashPassword(password))
-	return err
+		uuid.New(), username, hash); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (a *API) Handler() http.Handler {
@@ -126,13 +144,19 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "password_must_be_12_to_256_characters")
 		return
 	}
-	hash := hashPassword(input.Password)
+	hash, err := hashPassword(input.Password)
+	if err != nil {
+		log.Printf("hash registration password: %v", err)
+		writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
 	id := uuid.New()
-	_, err := a.db.Exec(r.Context(),
+	_, err = a.db.Exec(r.Context(),
 		"INSERT INTO users (id, username, password_hash) VALUES ($1, $2, $3)",
 		id, input.Username, hash)
 	if err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "duplicate") || strings.Contains(strings.ToLower(err.Error()), "unique") {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			writeError(w, http.StatusConflict, "username_unavailable")
 			return
 		}
@@ -236,12 +260,14 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	return true
 }
 
-func hashPassword(password string) string {
+func hashPassword(password string) (string, error) {
 	salt := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil { panic(err) }
+	if _, err := rand.Read(salt); err != nil {
+		return "", err
+	}
 	key := argon2.IDKey([]byte(password), salt, 3, 64*1024, 2, 32)
 	return "argon2id$" + base64.RawStdEncoding.EncodeToString(salt) + "$" +
-		base64.RawStdEncoding.EncodeToString(key)
+		base64.RawStdEncoding.EncodeToString(key), nil
 }
 
 func verifyPassword(password, encoded string) bool {
