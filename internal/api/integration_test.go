@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/base64"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/gorilla/websocket"
 )
 
 func TestAuthenticationFlowWithPostgres(t *testing.T) {
@@ -105,5 +107,205 @@ func TestAuthenticationFlowWithPostgres(t *testing.T) {
 	server.ServeHTTP(reuseResponse, reuseRequest)
 	if reuseResponse.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked session: expected 401, got %d", reuseResponse.Code)
+	}
+}
+
+
+func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
+	databaseURL := os.Getenv("TOMCHAT_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TOMCHAT_TEST_DATABASE_URL is not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	adminPool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("connect to test PostgreSQL: %v", err)
+	}
+	defer adminPool.Close()
+	schema := "tomchat_messages_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	if _, err := adminPool.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatalf("create isolated test schema: %v", err)
+	}
+	defer func() {
+		_, _ = adminPool.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE")
+	}()
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("parse test database URL: %v", err)
+	}
+	if config.ConnConfig.RuntimeParams == nil {
+		config.ConnConfig.RuntimeParams = make(map[string]string)
+	}
+	config.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatalf("connect to isolated schema: %v", err)
+	}
+	defer pool.Close()
+
+	api := New(pool, true)
+	if err := api.Migrate(); err != nil {
+		t.Fatalf("migrate schema: %v", err)
+	}
+	httpServer := httptest.NewServer(api.Handler())
+	defer httpServer.Close()
+
+	createAccount := func(username string) (user, string) {
+		t.Helper()
+		body, _ := json.Marshal(credentials{Username: username, Password: "long-test-password-123"})
+		registerRequest, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/auth/register", bytes.NewReader(body))
+		registerRequest.Header.Set("Content-Type", "application/json")
+		registerResponse, err := httpServer.Client().Do(registerRequest)
+		if err != nil {
+			t.Fatalf("register %s: %v", username, err)
+		}
+		defer registerResponse.Body.Close()
+		if registerResponse.StatusCode != http.StatusCreated {
+			t.Fatalf("register %s: got %d", username, registerResponse.StatusCode)
+		}
+		var account user
+		if err := json.NewDecoder(registerResponse.Body).Decode(&account); err != nil {
+			t.Fatalf("decode registered user: %v", err)
+		}
+
+		loginBody, _ := json.Marshal(credentials{Username: username, Password: "long-test-password-123"})
+		loginRequest, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/auth/login", bytes.NewReader(loginBody))
+		loginRequest.Header.Set("Content-Type", "application/json")
+		loginResponse, err := httpServer.Client().Do(loginRequest)
+		if err != nil {
+			t.Fatalf("login %s: %v", username, err)
+		}
+		defer loginResponse.Body.Close()
+		if loginResponse.StatusCode != http.StatusOK {
+			t.Fatalf("login %s: got %d", username, loginResponse.StatusCode)
+		}
+		var session authResponse
+		if err := json.NewDecoder(loginResponse.Body).Decode(&session); err != nil {
+			t.Fatalf("decode login response: %v", err)
+		}
+		return account, session.Token
+	}
+
+	alice, aliceToken := createAccount("alicechat")
+	bob, bobToken := createAccount("bobchat")
+
+	createBody, _ := json.Marshal(createConversationRequest{Kind: "direct", MemberIDs: []string{bob.ID}})
+	createRequest, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/conversations", bytes.NewReader(createBody))
+	createRequest.Header.Set("Authorization", "Bearer "+aliceToken)
+	createRequest.Header.Set("Content-Type", "application/json")
+	createResponse, err := httpServer.Client().Do(createRequest)
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	defer createResponse.Body.Close()
+	if createResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("create conversation: got %d", createResponse.StatusCode)
+	}
+	var created conversation
+	if err := json.NewDecoder(createResponse.Body).Decode(&created); err != nil {
+		t.Fatalf("decode conversation: %v", err)
+	}
+	if created.MemberCount != 2 || created.Kind != "direct" {
+		t.Fatalf("unexpected conversation: %+v", created)
+	}
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+bobToken)
+	wsURL := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/api/v1/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
+	if err != nil {
+		t.Fatalf("connect websocket: %v", err)
+	}
+	defer conn.Close()
+
+	clientMessageID := uuid.NewString()
+	sendBody, _ := json.Marshal(messageSendPayload{
+		ConversationID: created.ID,
+		ClientMessageID: clientMessageID,
+		Ciphertext: base64.StdEncoding.EncodeToString([]byte("opaque-ciphertext")),
+		Nonce: base64.StdEncoding.EncodeToString([]byte("123456789012")),
+		EncryptionVersion: 1,
+		KeyID: "alice-device-key-1",
+	})
+	sendRequest, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/conversations/"+created.ID+"/messages", bytes.NewReader(sendBody))
+	sendRequest.Header.Set("Authorization", "Bearer "+aliceToken)
+	sendRequest.Header.Set("Content-Type", "application/json")
+	sendResponse, err := httpServer.Client().Do(sendRequest)
+	if err != nil {
+		t.Fatalf("send encrypted message: %v", err)
+	}
+	if sendResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("send encrypted message: got %d", sendResponse.StatusCode)
+	}
+	var sent storedMessage
+	if err := json.NewDecoder(sendResponse.Body).Decode(&sent); err != nil {
+		t.Fatalf("decode sent message: %v", err)
+	}
+	sendResponse.Body.Close()
+	if sent.SenderID != alice.ID || sent.Ciphertext != base64.StdEncoding.EncodeToString([]byte("opaque-ciphertext")) {
+		t.Fatalf("unexpected stored message: %+v", sent)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var event wsEnvelope
+	if err := conn.ReadJSON(&event); err != nil {
+		t.Fatalf("read realtime delivery: %v", err)
+	}
+	if event.Event != "message.deliver" || event.Version != 1 {
+		t.Fatalf("unexpected websocket event: %+v", event)
+	}
+	var delivered storedMessage
+	if err := json.Unmarshal(event.Payload, &delivered); err != nil {
+		t.Fatalf("decode delivered message: %v", err)
+	}
+	if delivered.ID != sent.ID || delivered.ConversationID != created.ID {
+		t.Fatalf("delivered message does not match persisted message: %+v", delivered)
+	}
+
+	historyRequest, _ := http.NewRequest(http.MethodGet, httpServer.URL+"/api/v1/conversations/"+created.ID+"/messages?limit=20", nil)
+	historyRequest.Header.Set("Authorization", "Bearer "+bobToken)
+	historyResponse, err := httpServer.Client().Do(historyRequest)
+	if err != nil {
+		t.Fatalf("load message history: %v", err)
+	}
+	defer historyResponse.Body.Close()
+	if historyResponse.StatusCode != http.StatusOK {
+		t.Fatalf("load message history: got %d", historyResponse.StatusCode)
+	}
+	var history messagePage
+	if err := json.NewDecoder(historyResponse.Body).Decode(&history); err != nil {
+		t.Fatalf("decode message history: %v", err)
+	}
+	if len(history.Messages) != 1 || history.Messages[0].ID != sent.ID {
+		t.Fatalf("message history missing persisted message: %+v", history)
+	}
+
+	// Retrying the same client-generated ID is idempotent and does not duplicate rows.
+	retryRequest, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/conversations/"+created.ID+"/messages", bytes.NewReader(sendBody))
+	retryRequest.Header.Set("Authorization", "Bearer "+aliceToken)
+	retryRequest.Header.Set("Content-Type", "application/json")
+	retryResponse, err := httpServer.Client().Do(retryRequest)
+	if err != nil {
+		t.Fatalf("retry message: %v", err)
+	}
+	defer retryResponse.Body.Close()
+	if retryResponse.StatusCode != http.StatusCreated {
+		t.Fatalf("retry message: got %d", retryResponse.StatusCode)
+	}
+	var retried storedMessage
+	if err := json.NewDecoder(retryResponse.Body).Decode(&retried); err != nil {
+		t.Fatalf("decode retried message: %v", err)
+	}
+	if retried.ID != sent.ID {
+		t.Fatalf("idempotent retry returned %s, want %s", retried.ID, sent.ID)
+	}
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM messages WHERE conversation_id = $1", created.ID).Scan(&count); err != nil {
+		t.Fatalf("count persisted messages: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("stored %d messages after retry; want exactly one", count)
 	}
 }
