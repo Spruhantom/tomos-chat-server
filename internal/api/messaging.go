@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -82,12 +83,15 @@ type wsHub struct {
 	users map[string]map[*wsClient]struct{}
 }
 
+type sessionContextKey struct{}
+
 type wsClient struct {
 	conn *websocket.Conn
 	send chan []byte
 	done chan struct{}
 	once sync.Once
 	userID string
+	sessionHash []byte
 }
 
 func newWSHub() *wsHub {
@@ -118,11 +122,15 @@ func (h *wsHub) unregister(client *wsClient) {
 	}
 }
 
-func (h *wsHub) closeUser(userID string) {
+func (h *wsHub) closeSession(sessionHash []byte) {
 	h.mu.RLock()
-	clients := make([]*wsClient, 0, len(h.users[userID]))
-	for client := range h.users[userID] {
-		clients = append(clients, client)
+	clients := make([]*wsClient, 0)
+	for _, userClients := range h.users {
+		for client := range userClients {
+			if bytes.Equal(client.sessionHash, sessionHash) {
+				clients = append(clients, client)
+			}
+		}
 	}
 	h.mu.RUnlock()
 	for _, client := range clients {
@@ -490,7 +498,12 @@ func (a *API) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	client := &wsClient{conn: conn, send: make(chan []byte, 64), done: make(chan struct{}), userID: current.ID}
+	sessionHash, ok := r.Context().Value(sessionContextKey{}).([]byte)
+	if !ok || len(sessionHash) == 0 {
+		_ = conn.Close()
+		return
+	}
+	client := &wsClient{conn: conn, send: make(chan []byte, 64), done: make(chan struct{}), userID: current.ID, sessionHash: append([]byte(nil), sessionHash...)}
 	if !a.hub.register(client) {
 		client.close()
 		return
@@ -536,16 +549,14 @@ func (c *wsClient) readPump(a *API, current user) {
 	c.conn.SetReadLimit(maxWebSocketFrameBytes)
 	_ = c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.conn.SetPongHandler(func(string) error {
-		if !a.sessionIsActive(current.ID) {
+		if !a.sessionIsActive(c.sessionHash) {
 			return errors.New("session expired")
 		}
 		return c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	})
 	windowStarted := time.Now()
 	messageCount := 0
-	sessionCheck := time.NewTicker(time.Minute)
-	defer sessionCheck.Stop()
-	for {
+		for {
 		_, raw, err := c.conn.ReadMessage()
 		if err != nil {
 			return
@@ -585,14 +596,6 @@ func (c *wsClient) readPump(a *API, current user) {
 		default:
 			c.sendError(envelope.RequestID, "unsupported_event")
 		}
-		select {
-		case <-sessionCheck.C:
-			if !a.sessionIsActive(current.ID) {
-				c.sendError(envelope.RequestID, "session_expired")
-				return
-			}
-		default:
-		}
 	}
 }
 
@@ -626,8 +629,10 @@ func messageErrorCode(err error) string {
 	}
 }
 
-func (a *API) sessionIsActive(userID string) bool {
+func (a *API) sessionIsActive(sessionHash []byte) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 	var active bool
-	err := a.db.QueryRow(context.Background(), "SELECT EXISTS (SELECT 1 FROM sessions WHERE user_id = $1 AND expires_at > NOW())", userID).Scan(&active)
+	err := a.db.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM sessions WHERE token_hash = $1 AND expires_at > NOW())", sessionHash).Scan(&active)
 	return err == nil && active
 }
