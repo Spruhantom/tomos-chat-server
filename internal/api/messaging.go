@@ -404,15 +404,15 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 	}
 	clientMessageID, err := uuid.Parse(input.ClientMessageID)
 	if err != nil || input.EncryptionVersion != 1 || len(input.KeyID) > 128 {
-		return storedMessage{}, errInvalidMessage
+		return storedMessage{}, false, errInvalidMessage
 	}
 	ciphertext, err := base64.StdEncoding.DecodeString(input.Ciphertext)
 	if err != nil || len(ciphertext) == 0 || len(ciphertext) > maxCiphertextBytes {
-		return storedMessage{}, errInvalidMessage
+		return storedMessage{}, false, errInvalidMessage
 	}
 	nonce, err := base64.StdEncoding.DecodeString(input.Nonce)
 	if err != nil || len(nonce) < 8 || len(nonce) > 32 {
-		return storedMessage{}, errInvalidMessage
+		return storedMessage{}, false, errInvalidMessage
 	}
 	if !a.isConversationMember(ctx, conversationID, senderID.String()) {
 		return storedMessage{}, false, errNotConversationMember
@@ -429,7 +429,7 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 			"FROM messages WHERE sender_id = $1 AND client_message_id = $2"
 		item, err = scanStoredMessage(a.db.QueryRow(ctx, selectQuery, senderID, clientMessageID))
 		if err != nil {
-			return storedMessage{}, err
+			return storedMessage{}, false, err
 		}
 		if item.ConversationID != conversationID.String() {
 			return storedMessage{}, false, errMessageIDConflict
@@ -437,7 +437,7 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 		return item, false, nil
 	}
 	if err != nil {
-		return storedMessage{}, err
+		return storedMessage{}, false, err
 	}
 	return item, true, nil
 }
