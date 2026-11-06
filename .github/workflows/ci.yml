@@ -10,13 +10,22 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-      - run: go mod download
-      - run: gofmt -w .
-      - run: go vet ./...
-      - run: go test -race ./...
-      - run: go build ./cmd/tomchat-server
+          cache: true
+      # go mod download does not reliably populate package checksums for every
+      # imported package. Tidy resolves the pinned graph and creates go.sum.
+      - name: Resolve and verify Go modules
+        run: go mod tidy
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l .)"
+      - name: Run static analysis
+        run: go vet ./...
+      - name: Run race-enabled tests
+        run: go test -race ./...
+      - name: Build server
+        run: go build ./cmd/tomchat-server
