@@ -33,10 +33,8 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
-      # go mod download does not reliably populate package checksums for every
-      # imported package. Tidy resolves the pinned graph and creates go.sum.
-      - name: Resolve and verify Go modules
-        run: go mod tidy
+      - name: Verify pinned Go module manifest and checksums
+        run: go mod tidy -diff
       - name: Format Go source
         run: |
           gofmt -w .
@@ -49,12 +47,3 @@ jobs:
         run: go test -race ./...
       - name: Build server
         run: go build ./cmd/tomchat-server
-      - name: Upload Go module checksums
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tomchat-server-go-sum
-          path: |
-            go.mod
-            go.sum
-          if-no-files-found: error
