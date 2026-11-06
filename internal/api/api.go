@@ -231,6 +231,7 @@ func (a *API) requireAuth(next http.Handler) http.Handler {
 			return
 		}
 		ctx := contextWithUser(r, u)
+		ctx = context.WithValue(ctx, sessionContextKey{}, append([]byte(nil), sum[:]...))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -250,7 +251,7 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if current, ok := userFromContext(r); ok {
-		a.hub.closeUser(current.ID)
+		a.hub.closeSession(sum[:])
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
