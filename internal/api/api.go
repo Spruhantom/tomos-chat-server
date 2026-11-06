@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/argon2"
 )
@@ -62,6 +61,24 @@ func (a *API) Migrate() error {
 	schema, err := schemaFS.ReadFile("schema.sql")
 	if err != nil { return err }
 	_, err = a.db.Exec(aContext(), string(schema))
+	return err
+}
+
+func (a *API) BootstrapAdmin(ctx context.Context, username, password string) error {
+	username = strings.TrimSpace(username)
+	if !usernamePattern.MatchString(username) || len(password) < 12 || len(password) > 256 {
+		return errors.New("bootstrap administrator credentials do not meet policy")
+	}
+	var count int
+	if err := a.db.QueryRow(ctx, "SELECT COUNT(*) FROM users").Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err := a.db.Exec(ctx,
+		"INSERT INTO users (id, username, password_hash, role) VALUES ($1, $2, $3, 'admin')",
+		uuid.New(), username, hashPassword(password))
 	return err
 }
 
@@ -129,6 +146,7 @@ func (a *API) register(w http.ResponseWriter, r *http.Request) {
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
 	var input credentials
 	if !decodeJSON(w, r, &input) { return }
+	if len(input.Password) > 256 { writeError(w, http.StatusUnauthorized, "invalid_credentials"); return }
 	var u user
 	var passwordHash string
 	err := a.db.QueryRow(r.Context(),
@@ -270,6 +288,3 @@ func userFromContext(r *http.Request) (user, bool) {
 
 func aContext() context.Context { return context.Background() }
 
-// Keep the SQL driver interface explicit for future store abstraction.
-var _ = sql.ErrNoRows
-var _ = pgx.ErrNoRows
