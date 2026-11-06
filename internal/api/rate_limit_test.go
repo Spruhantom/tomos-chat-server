@@ -48,14 +48,23 @@ func TestLoginRateLimiterSeparatesClientIPsAndIgnoresForwardedHeader(t *testing.
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	for _, remote := range []string{"192.0.2.1:1000", "192.0.2.2:1000"} {
+	requests := []struct {
+		remote string
+		forwarded string
+		wantStatus int
+	}{
+		{remote: "192.0.2.1:1000", forwarded: "198.51.100.99", wantStatus: http.StatusNoContent},
+		{remote: "192.0.2.1:1001", forwarded: "203.0.113.50", wantStatus: http.StatusTooManyRequests},
+		{remote: "192.0.2.2:1000", forwarded: "198.51.100.99", wantStatus: http.StatusNoContent},
+	}
+	for _, item := range requests {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
-		request.RemoteAddr = remote
-		request.Header.Set("X-Forwarded-For", "198.51.100.99")
+		request.RemoteAddr = item.remote
+		request.Header.Set("X-Forwarded-For", item.forwarded)
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusNoContent {
-			t.Fatalf("expected independent client allowance, got %d", recorder.Code)
+		if recorder.Code != item.wantStatus {
+			t.Fatalf("remote %s: expected %d, got %d", item.remote, item.wantStatus, recorder.Code)
 		}
 	}
 	if called != 2 {
