@@ -331,7 +331,7 @@ func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
 		t.Fatalf("idempotent retry returned %s, want %s", retried.ID, sent.ID)
 	}
 	var count int
-	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM messages WHERE conversation_id = $1", created.ID).Scan(&count); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM messages WHERE conversation_id = $1", uuid.MustParse(created.ID)).Scan(&count); err != nil {
 		t.Fatalf("count persisted messages: %v", err)
 	}
 	if count != 1 {
