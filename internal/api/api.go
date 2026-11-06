@@ -29,6 +29,7 @@ const sessionLifetime = 24 * time.Hour
 type API struct {
 	db *pgxpool.Pool
 	registrationEnabled bool
+	loginLimiter *loginRateLimiter
 }
 
 type user struct {
@@ -55,7 +56,7 @@ type errorResponse struct {
 var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]{3,32}$`)
 
 func New(db *pgxpool.Pool, registrationEnabled bool) *API {
-	return &API{db: db, registrationEnabled: registrationEnabled}
+	return &API{db: db, registrationEnabled: registrationEnabled, loginLimiter: newLoginRateLimiter(10, time.Minute)}
 }
 
 func (a *API) Migrate() error {
@@ -106,7 +107,7 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/version", a.version)
 	mux.HandleFunc("GET /api/v1/registration", a.registrationStatus)
 	mux.HandleFunc("POST /api/v1/auth/register", a.register)
-	mux.HandleFunc("POST /api/v1/auth/login", a.login)
+	mux.Handle("POST /api/v1/auth/login", a.loginLimiter.middleware(http.HandlerFunc(a.login)))
 	mux.Handle("GET /api/v1/users/me", a.requireAuth(http.HandlerFunc(a.me)))
 	mux.Handle("POST /api/v1/auth/logout", a.requireAuth(http.HandlerFunc(a.logout)))
 	return securityHeaders(mux)
