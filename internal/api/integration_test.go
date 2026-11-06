@@ -320,8 +320,8 @@ func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
 		t.Fatalf("retry message: %v", err)
 	}
 	defer retryResponse.Body.Close()
-	if retryResponse.StatusCode != http.StatusCreated {
-		t.Fatalf("retry message: got %d", retryResponse.StatusCode)
+	if retryResponse.StatusCode != http.StatusOK {
+		t.Fatalf("idempotent retry: expected 200, got %d", retryResponse.StatusCode)
 	}
 	var retried storedMessage
 	if err := json.NewDecoder(retryResponse.Body).Decode(&retried); err != nil {
