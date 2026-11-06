@@ -30,6 +30,7 @@ type API struct {
 	db *pgxpool.Pool
 	registrationEnabled bool
 	loginLimiter *loginRateLimiter
+	hub *wsHub
 }
 
 type user struct {
@@ -56,7 +57,7 @@ type errorResponse struct {
 var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_.-]{3,32}$`)
 
 func New(db *pgxpool.Pool, registrationEnabled bool) *API {
-	return &API{db: db, registrationEnabled: registrationEnabled, loginLimiter: newLoginRateLimiter(10, time.Minute)}
+	return &API{db: db, registrationEnabled: registrationEnabled, loginLimiter: newLoginRateLimiter(10, time.Minute), hub: newWSHub()}
 }
 
 func (a *API) Migrate() error {
@@ -108,6 +109,11 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/registration", a.registrationStatus)
 	mux.HandleFunc("POST /api/v1/auth/register", a.register)
 	mux.Handle("POST /api/v1/auth/login", a.loginLimiter.middleware(http.HandlerFunc(a.login)))
+	mux.Handle("GET /api/v1/ws", a.requireAuth(http.HandlerFunc(a.websocketHandler)))
+	mux.Handle("GET /api/v1/conversations", a.requireAuth(http.HandlerFunc(a.listConversations)))
+	mux.Handle("POST /api/v1/conversations", a.requireAuth(http.HandlerFunc(a.createConversation)))
+	mux.Handle("GET /api/v1/conversations/{conversationID}/messages", a.requireAuth(http.HandlerFunc(a.listMessages)))
+	mux.Handle("POST /api/v1/conversations/{conversationID}/messages", a.requireAuth(http.HandlerFunc(a.sendMessageHTTP)))
 	mux.Handle("GET /api/v1/users/me", a.requireAuth(http.HandlerFunc(a.me)))
 	mux.Handle("POST /api/v1/auth/logout", a.requireAuth(http.HandlerFunc(a.logout)))
 	return securityHeaders(mux)
@@ -242,6 +248,9 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "internal_error")
 		return
+	}
+	if current, ok := userFromContext(r); ok {
+		a.hub.closeUser(current.ID)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
