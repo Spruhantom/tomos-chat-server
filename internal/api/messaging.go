@@ -94,13 +94,17 @@ func newWSHub() *wsHub {
 	return &wsHub{users: make(map[string]map[*wsClient]struct{})}
 }
 
-func (h *wsHub) register(client *wsClient) {
+func (h *wsHub) register(client *wsClient) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if len(h.users[client.userID]) >= 5 {
+		return false
+	}
 	if h.users[client.userID] == nil {
 		h.users[client.userID] = make(map[*wsClient]struct{})
 	}
 	h.users[client.userID][client] = struct{}{}
+	return true
 }
 
 func (h *wsHub) unregister(client *wsClient) {
@@ -266,6 +270,8 @@ func (a *API) listConversations(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "internal_error")
 			return
 		}
+		item.Ciphertext = base64.StdEncoding.EncodeToString(ciphertext)
+		item.Nonce = base64.StdEncoding.EncodeToString(nonce)
 		items = append(items, item)
 	}
 	if rows.Err() != nil {
@@ -308,7 +314,7 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 		before = value
 	}
 	query := "SELECT id::text, sequence, conversation_id::text, sender_id::text, client_message_id::text, " +
-		"encode(ciphertext, 'base64'), encode(nonce, 'base64'), encryption_version, COALESCE(key_id, ''), created_at " +
+		"ciphertext, nonce, encryption_version, COALESCE(key_id, ''), created_at " +
 		"FROM messages WHERE conversation_id = $1 AND sequence < COALESCE($2::bigint, 9223372036854775807) " +
 		"ORDER BY sequence DESC LIMIT $3"
 	rows, err := a.db.Query(r.Context(), query, conversationID, before, limit)
@@ -320,7 +326,8 @@ func (a *API) listMessages(w http.ResponseWriter, r *http.Request) {
 	items := make([]storedMessage, 0, limit)
 	for rows.Next() {
 		var item storedMessage
-		if err := rows.Scan(&item.ID, &item.Sequence, &item.ConversationID, &item.SenderID, &item.ClientMessageID, &item.Ciphertext, &item.Nonce, &item.EncryptionVersion, &item.KeyID, &item.CreatedAt); err != nil {
+		var ciphertext, nonce []byte
+		if err := rows.Scan(&item.ID, &item.Sequence, &item.ConversationID, &item.SenderID, &item.ClientMessageID, &ciphertext, &nonce, &item.EncryptionVersion, &item.KeyID, &item.CreatedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "internal_error")
 			return
 		}
@@ -387,14 +394,13 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 	insertQuery := "INSERT INTO messages (id, conversation_id, sender_id, client_message_id, ciphertext, nonce, encryption_version, key_id) " +
 		"VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8, '')) ON CONFLICT (sender_id, client_message_id) DO NOTHING " +
 		"RETURNING id::text, sequence, conversation_id::text, sender_id::text, client_message_id::text, " +
-		"encode(ciphertext, 'base64'), encode(nonce, 'base64'), encryption_version, COALESCE(key_id, ''), created_at"
-	err = a.db.QueryRow(ctx, insertQuery, uuid.New(), conversationID, sender.ID, clientMessageID, ciphertext, nonce, input.EncryptionVersion, input.KeyID).
-		Scan(&item.ID, &item.Sequence, &item.ConversationID, &item.SenderID, &item.ClientMessageID, &item.Ciphertext, &item.Nonce, &item.EncryptionVersion, &item.KeyID, &item.CreatedAt)
+		"ciphertext, nonce, encryption_version, COALESCE(key_id, ''), created_at"
+	item, err = scanStoredMessage(a.db.QueryRow(ctx, insertQuery, uuid.New(), conversationID, sender.ID, clientMessageID, ciphertext, nonce, input.EncryptionVersion, input.KeyID))
 	if errors.Is(err, pgx.ErrNoRows) {
 		selectQuery := "SELECT id::text, sequence, conversation_id::text, sender_id::text, client_message_id::text, " +
 			"encode(ciphertext, 'base64'), encode(nonce, 'base64'), encryption_version, COALESCE(key_id, ''), created_at " +
 			"FROM messages WHERE sender_id = $1 AND client_message_id = $2"
-		err = a.db.QueryRow(ctx, selectQuery, sender.ID, clientMessageID).Scan(&item.ID, &item.Sequence, &item.ConversationID, &item.SenderID, &item.ClientMessageID, &item.Ciphertext, &item.Nonce, &item.EncryptionVersion, &item.KeyID, &item.CreatedAt)
+		item, err = scanStoredMessage(a.db.QueryRow(ctx, selectQuery, sender.ID, clientMessageID))
 		if err != nil {
 			return storedMessage{}, err
 		}
@@ -406,6 +412,18 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 	if err != nil {
 		return storedMessage{}, err
 	}
+	return item, nil
+}
+
+func scanStoredMessage(row pgx.Row) (storedMessage, error) {
+	var item storedMessage
+	var ciphertext, nonce []byte
+	err := row.Scan(&item.ID, &item.Sequence, &item.ConversationID, &item.SenderID, &item.ClientMessageID, &ciphertext, &nonce, &item.EncryptionVersion, &item.KeyID, &item.CreatedAt)
+	if err != nil {
+		return storedMessage{}, err
+	}
+	item.Ciphertext = base64.StdEncoding.EncodeToString(ciphertext)
+	item.Nonce = base64.StdEncoding.EncodeToString(nonce)
 	return item, nil
 }
 
@@ -473,7 +491,10 @@ func (a *API) websocketHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	client := &wsClient{conn: conn, send: make(chan []byte, 64), done: make(chan struct{}), userID: current.ID}
-	a.hub.register(client)
+	if !a.hub.register(client) {
+		client.close()
+		return
+	}
 	go client.writePump()
 	client.readPump(a, current)
 }
@@ -514,7 +535,12 @@ func (c *wsClient) readPump(a *API, current user) {
 	defer c.close()
 	c.conn.SetReadLimit(maxWebSocketFrameBytes)
 	_ = c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-	c.conn.SetPongHandler(func(string) error { return c.conn.SetReadDeadline(time.Now().Add(60 * time.Second)) })
+	c.conn.SetPongHandler(func(string) error {
+		if !a.sessionIsActive(current.ID) {
+			return errors.New("session expired")
+		}
+		return c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	})
 	windowStarted := time.Now()
 	messageCount := 0
 	sessionCheck := time.NewTicker(time.Minute)
