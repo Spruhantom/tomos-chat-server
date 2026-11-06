@@ -250,9 +250,7 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	if current, ok := userFromContext(r); ok {
-		a.hub.closeSession(sum[:])
-	}
+	a.hub.closeSession(sum[:])
 	w.WriteHeader(http.StatusNoContent)
 }
 
