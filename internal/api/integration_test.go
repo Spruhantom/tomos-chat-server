@@ -190,7 +190,7 @@ func TestConversationPersistenceAndWebSocketDelivery(t *testing.T) {
 
 	alice, aliceToken := createAccount("alicechat")
 	bob, bobToken := createAccount("bobchat")
-	charlie, charlieToken := createAccount("charliechat")
+	_, charlieToken := createAccount("charliechat")
 
 	createBody, _ := json.Marshal(createConversationRequest{Kind: "direct", MemberIDs: []string{bob.ID}})
 	createRequest, _ := http.NewRequest(http.MethodPost, httpServer.URL+"/api/v1/conversations", bytes.NewReader(createBody))
