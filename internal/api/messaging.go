@@ -380,23 +380,27 @@ func (a *API) sendMessageHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "conversation_id_mismatch")
 		return
 	}
-	message, err := a.persistMessage(r.Context(), current, input)
+	message, created, err := a.persistMessage(r.Context(), current, input)
 	if err != nil {
 		a.writeMessageError(w, err)
 		return
 	}
-	a.publishMessage(r.Context(), message)
-	writeJSON(w, http.StatusCreated, message)
+	status := http.StatusOK
+	if created {
+		a.publishMessage(r.Context(), message)
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, message)
 }
 
-func (a *API) persistMessage(ctx context.Context, sender user, input messageSendPayload) (storedMessage, error) {
+func (a *API) persistMessage(ctx context.Context, sender user, input messageSendPayload) (storedMessage, bool, error) {
 	conversationID, err := uuid.Parse(input.ConversationID)
 	if err != nil {
-		return storedMessage{}, errInvalidMessage
+		return storedMessage{}, false, errInvalidMessage
 	}
 	senderID, err := uuid.Parse(sender.ID)
 	if err != nil {
-		return storedMessage{}, err
+		return storedMessage{}, false, err
 	}
 	clientMessageID, err := uuid.Parse(input.ClientMessageID)
 	if err != nil || input.EncryptionVersion != 1 || len(input.KeyID) > 128 {
@@ -411,7 +415,7 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 		return storedMessage{}, errInvalidMessage
 	}
 	if !a.isConversationMember(ctx, conversationID, senderID.String()) {
-		return storedMessage{}, errNotConversationMember
+		return storedMessage{}, false, errNotConversationMember
 	}
 	var item storedMessage
 	insertQuery := "INSERT INTO messages (id, conversation_id, sender_id, client_message_id, ciphertext, nonce, encryption_version, key_id) " +
@@ -428,14 +432,14 @@ func (a *API) persistMessage(ctx context.Context, sender user, input messageSend
 			return storedMessage{}, err
 		}
 		if item.ConversationID != conversationID.String() {
-			return storedMessage{}, errMessageIDConflict
+			return storedMessage{}, false, errMessageIDConflict
 		}
-		return item, nil
+		return item, false, nil
 	}
 	if err != nil {
 		return storedMessage{}, err
 	}
-	return item, nil
+	return item, true, nil
 }
 
 func scanStoredMessage(row pgx.Row) (storedMessage, error) {
@@ -607,8 +611,8 @@ func (c *wsClient) readPump(a *API, current user) {
 				continue
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			item, err := a.persistMessage(ctx, current, input)
-			if err == nil {
+			item, created, err := a.persistMessage(ctx, current, input)
+			if err == nil && created {
 				a.publishMessage(ctx, item)
 			}
 			cancel()
