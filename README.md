@@ -65,7 +65,7 @@ WebSocket events are documented in the TomChat Protocol repository. The current 
 - `POST /api/v1/auth/logout` (Bearer token)
 - `GET /api/v1/conversations` (Bearer token)
 - `POST /api/v1/conversations` (Bearer token)
-- `GET /api/v1/conversations/{conversationID}/messages?limit=50&before={sequence}` (Bearer token)
+- `GET /api/v1/conversations/{conversationID}/messages?limit=50&before={sequence} or `after={sequence}` (mutually exclusive)` (Bearer token)
 - `POST /api/v1/conversations/{conversationID}/messages` (Bearer token)
 - `GET /api/v1/ws` (WebSocket upgrade with Bearer token)
 
