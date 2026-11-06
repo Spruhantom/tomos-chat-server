@@ -3,7 +3,7 @@ package api
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"database/sql"
+	"context"
 	"embed"
 	"encoding/base64"
 	"encoding/json"
