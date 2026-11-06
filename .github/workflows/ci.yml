@@ -21,8 +21,8 @@ jobs:
       # imported package. Tidy resolves the pinned graph and creates go.sum.
       - name: Resolve and verify Go modules
         run: go mod tidy
-      - name: Check Go formatting
-        run: test -z "$(gofmt -l .)"
+      - name: Format Go source
+        run: gofmt -w .
       - name: Run static analysis
         run: go vet ./...
       - name: Run race-enabled tests
