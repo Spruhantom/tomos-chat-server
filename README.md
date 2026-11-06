@@ -5,32 +5,39 @@ Self-hosted TomChat backend for Debian 13.
 ## Stage 2: Authentication foundation
 
 Implemented:
-- PostgreSQL-backed user accounts and sessions
+- PostgreSQL-backed accounts and sessions
 - Argon2id password hashing
 - Public/private registration switch
-- Login with random bearer tokens (stored as SHA-256 token hashes)
-- Authenticated `GET /api/v1/users/me`
-- Authenticated `POST /api/v1/auth/logout`
+- First-run administrator bootstrap
+- Login with random bearer tokens; only SHA-256 token hashes are stored
+- Authenticated current-user endpoint and logout
 - Database-backed health check
 
-Not implemented yet: message persistence, WebSocket delivery, admin web UI, account recovery, rate limiting, device keys, end-to-end encryption, and calling. Do not expose this service directly to the internet until TLS, rate limiting, monitoring, and a full security review are in place.
+Not implemented yet: message persistence, WebSocket delivery, admin web UI, account recovery, rate limiting, device keys, end-to-end encryption, and voice/video calls. Do not expose this service directly to the public internet until TLS, rate limiting, monitoring, and a security review are in place.
 
 ## Configuration
 
-Set:
-- `TOMCHAT_DATABASE_URL` — PostgreSQL connection string (required)
+Required:
+- `TOMCHAT_DATABASE_URL` — PostgreSQL connection string
+
+Optional:
 - `TOMCHAT_LISTEN_ADDR` — defaults to `127.0.0.1:8080`
 - `TOMCHAT_REGISTRATION_ENABLED` — set to `true` to allow public registration; defaults to private registration
+- `TOMCHAT_BOOTSTRAP_ADMIN_USERNAME` and `TOMCHAT_BOOTSTRAP_ADMIN_PASSWORD` — together, create the first administrator only when the database has no users
 
-The server applies the initial idempotent schema on startup. For production, use a dedicated database role and a strong secret.
+The bootstrap credentials are ignored after the first account exists. Remove them from the service environment after successful first startup.
 
 ## Run
 
 ```bash
 export TOMCHAT_DATABASE_URL='postgres://tomchat:password@127.0.0.1:5432/tomchat?sslmode=disable'
 export TOMCHAT_REGISTRATION_ENABLED=false
+export TOMCHAT_BOOTSTRAP_ADMIN_USERNAME=admin
+export TOMCHAT_BOOTSTRAP_ADMIN_PASSWORD='use-a-long-unique-password-here'
 go run ./cmd/tomchat-server
 ```
+
+The server applies its initial idempotent schema on startup.
 
 ## API
 
@@ -42,11 +49,18 @@ go run ./cmd/tomchat-server
 - `GET /api/v1/users/me` (Bearer token)
 - `POST /api/v1/auth/logout` (Bearer token)
 
-Passwords must be 12–256 characters. Usernames are 3–32 ASCII letters, digits, dots, underscores, or hyphens.
+Passwords must be 12–256 characters. Usernames are 3–32 ASCII letters, digits, dots, underscores, or hyphens. Login sessions expire after 24 hours.
 
-## Debian 13
+## Development
 
-Install PostgreSQL 16 or later and Go 1.23+, configure the environment, then run the service. A hardened systemd unit is in `deployments/systemd`.
+Requires Go 1.23+ and PostgreSQL 16+.
+
+```bash
+go mod download
+go test ./...
+go vet ./...
+go run ./cmd/tomchat-server
+```
 
 ## Licence
 
