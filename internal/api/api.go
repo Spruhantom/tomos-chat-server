@@ -128,7 +128,7 @@ func (a *API) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) version(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"name":"TomChat Server","version":"0.2.0-dev"})
+	writeJSON(w, http.StatusOK, map[string]string{"name":"TomChat Server","version":"0.3.0-dev"})
 }
 
 func (a *API) registrationStatus(w http.ResponseWriter, r *http.Request) {
