@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,7 +10,11 @@ import (
 func TestHealthEndpoint(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			t.Errorf("encode health response: %v", err)
+		}
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
