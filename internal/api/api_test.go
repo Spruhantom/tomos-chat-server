@@ -4,7 +4,10 @@ import "testing"
 
 func TestPasswordHashRoundTrip(t *testing.T) {
 	password := "correct horse battery staple"
-	encoded := hashPassword(password)
+	encoded, err := hashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
 	if encoded == password {
 		t.Fatal("password was not hashed")
 	}
