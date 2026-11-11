@@ -20,7 +20,7 @@ data class EncryptedAppFrame(
         TEXT(1),
         GROUP_CONTROL(2),
         VOICE_SIGNAL(3),
-        GROUP_VOICE_CONTROL(4);
+        GROUP_VOICE_CONTROL(4),\n        ACKNOWLEDGEMENT(5);
 
         companion object {
             fun fromWire(value: Int): Type =
