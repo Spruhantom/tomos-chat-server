@@ -28,7 +28,7 @@ The first-run screen collects a display name and a date of birth in `YYYY-MM-DD`
 - Calls: placeholder for authenticated direct voice calls.
 - Settings: zero-server policy, automatic route preference, identity, backups, and future TomSocial direction.
 
-The Android source includes mutual contact-identity proof followed by a Noise XX handshake on the same direct TCP socket, then a framed encrypted peer channel and a conversation-session adapter backed by encrypted local history. The instrumented loopback test exercises encrypted bidirectional frames through the JNI core. The Compose screens are not yet connected to the conversation-session adapter, so this is not yet an end-user messaging prototype. Calls remain a foundation and require real-device integration and testing.
+The Android source includes both the earlier mutual identity-proof transport and a direct Noise-pinned TCP listener/connector compatible with the Linux Noise XX transport. The signed contact card binds the X25519 Noise key to the user's P-256 identity; users must compare the signing-key fingerprint out of band before trusting it. The instrumented loopback test exercises the direct Noise listener/connector and encrypted bidirectional application frames. The Rust and Kotlin application codecs share a golden wire-format test vector. The conversation adapter now persists outgoing messages as queued until an encrypted ACK arrives, acknowledges inbound messages only after local persistence, and exposes a queued-message retry API. The Compose screens and reconnect lifecycle are not yet connected to this adapter, so this is still not an end-user messaging prototype. Calls remain a foundation and require real-device integration and testing.
 
 ## Visual design
 
