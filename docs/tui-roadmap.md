@@ -5,7 +5,7 @@
 - [x] Keyboard-driven contacts and conversation layout.
 - [x] Local peer-hint configuration with owner-only permissions.
 - [x] Arch Linux build metadata.
-- [ ] Validate formatting, compilation, tests and Clippy in CI.
+- [ ] Validate formatting, compilation, tests and Clippy in CI; latest runs are queued.
 
 ## Milestone 2 — shared peer core
 - [x] Create a shared Rust workspace crate for Noise XX sessions.
@@ -13,7 +13,7 @@
 - [x] Migrate Android Noise JNI bridge and identity/contact-key binding source.
 - [x] Link the Linux client to the shared Rust crate.
 - [x] Add a direct TCP peer-channel adapter with bounded frames and a loopback handshake/message test.
-- [ ] Add Linux secure identity storage through the OS credential service.
+- [x] Add Linux X25519 identity storage through the desktop Secret Service, with zeroization and fail-closed behaviour.
 - [ ] Migrate Android contact and conversation UI integration and verify Android build/tests.
 
 ## Milestone 3 — direct connectivity
