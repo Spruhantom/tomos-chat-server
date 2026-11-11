@@ -29,9 +29,9 @@
 - [ ] Review and finalise pairwise E2EE threat model and implementation.
 - [ ] Evaluate OpenMLS for group messaging.
 - [ ] Persist keys and ratchet state securely on Linux and Android.
-- [ ] Integrate Linux and Android composers with the encrypted peer channel.
-- [ ] Implement acknowledgements, encrypted outbox retry and duplicate suppression.
-- [ ] Add cross-platform interoperability and adversarial tests.
+- [ ] Integrate Linux and Android composers with the encrypted peer channel.\n- [x] Define a versioned Android-compatible application envelope in Rust and Kotlin, with a shared golden test vector.\n- [x] Add encrypted delivery acknowledgements, persist outgoing messages as queued until ACK, and expose queued-message retry on Android.\n- [ ] Wire queued-message retry and receive-loop lifecycle into the Android UI; implement equivalent Linux durable outbox handling.
+- [x] Add acknowledgement frames and Android encrypted queued-message persistence/retry API.\n- [ ] Finish cross-platform durable outbox, duplicate suppression and reconnect lifecycle.
+- [ ] Run Android/Linux cross-platform interoperability tests and adversarial tests. Android direct Noise listener/connector has an instrumentation loopback test; this is not yet a physical Android-to-Linux test.
 
 ## Milestone 5 — calling and files
 - [ ] Direct call signalling over an authenticated peer channel.
