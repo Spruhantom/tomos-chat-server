@@ -1,4 +1,4 @@
-name: TomChat Linux client CI
+name: TomChat shared Rust core and Linux client CI
 
 on:
   push:
@@ -8,24 +8,19 @@ permissions:
   contents: read
 
 jobs:
-  tui:
+  rust:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: tui
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: tui
       - name: Check formatting
         run: cargo fmt --all -- --check
-      - name: Compile
-        run: cargo check
-      - name: Run tests
-        run: cargo test
-      - name: Run Clippy
-        run: cargo clippy --all-targets -- -D warnings
+      - name: Test shared Noise core
+        run: cargo test -p tomchat-noise
+      - name: Test Linux direct peer transport
+        run: cargo test -p tomchat-tui
+      - name: Clippy workspace
+        run: cargo clippy --workspace --all-targets -- -D warnings
