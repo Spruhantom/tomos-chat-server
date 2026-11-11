@@ -1,0 +1,42 @@
+name: Debian 13 compatibility
+
+on:
+  push:
+    branches:
+      - main
+      - migration/tomchat-consolidation
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  debian-build:
+    runs-on: ubuntu-latest
+    container: debian:13
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git build-essential golang-go cargo rustc dpkg-dev pkg-config
+      - uses: actions/checkout@v4
+      - name: Test Go server
+        run: |
+          go version
+          go test ./...
+          go vet ./...
+      - name: Check Rust formatting
+        working-directory: tui
+        run: cargo fmt --all -- --check
+      - name: Check and test TUI
+        working-directory: tui
+        run: |
+          cargo check
+          cargo test
+          cargo clippy --all-targets -- -D warnings
+      - name: Build Debian packages
+        run: |
+          chmod +x packaging/debian/build-packages.sh
+          ./packaging/debian/build-packages.sh
+          dpkg-deb --info build/deb/tomchat-server_*.deb
+          dpkg-deb --info build/deb/tomchat-tui_*.deb
