@@ -19,7 +19,6 @@ fail() { echo "TomChat installer: $*" >&2; exit 1; }
 [[ "$(id -u)" -ne 0 ]] || fail "Run this installer as your normal user, not through sudo. It will request sudo when needed."
 command -v sudo >/dev/null 2>&1 || fail "sudo is required. Install sudo and ensure your user can administer the system."
 command -v curl >/dev/null 2>&1 || fail "curl is required."
-command -v git >/dev/null 2>&1 || fail "git is required."
 [[ -r /etc/os-release ]] || fail "Cannot identify this Linux distribution."
 . /etc/os-release
 [[ "${ID:-}" == "debian" && "${VERSION_ID:-}" == "13" ]] || fail "This installer currently supports Debian 13 (Trixie) only."
