@@ -76,7 +76,10 @@ class EncryptedMessageStore(filesDir: File) {
     fun updateStatus(messageId: UUID, status: StoredMessageStatus) = synchronized(lock) {
         if (!file.baseFile.exists()) return@synchronized
         val records = decryptSnapshot().map {
-            if (it.id == messageId) it.copy(status = status) else it
+            if (it.id == messageId &&
+                it.direction == StoredMessageDirection.OUTGOING &&
+                it.status == StoredMessageStatus.QUEUED
+            ) it.copy(status = status) else it
         }
         writeSnapshot(records)
     }
