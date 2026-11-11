@@ -29,7 +29,7 @@ class DirectNoisePeerListener(
         check(!server.isBound) { "Listener has already started." }
         server.reuseAddress = false
         server.bind(bindAddress, 1)
-        server.soTimeout = timeoutMs
+        server.soTimeout = 0 // Keep listening until explicitly stopped; handshake itself is time-bounded.
     }
 
     @Throws(IOException::class)
