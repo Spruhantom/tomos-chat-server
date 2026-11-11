@@ -47,6 +47,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Line::from(""), Line::from("/help                         Show this help"),
             Line::from("/peers                        Open contacts"), Line::from("/chats                        Open conversations"),
             Line::from("/settings                     Open settings"),
+            Line::from("/identity                     Create/load identity in Secret Service"),
             Line::from("/add-peer <name> <sha256> <host:port>  Save a local peer hint"),
             Line::from("/listen                       Planned; not implemented"),
             Line::from("/connect                      Planned; not implemented"),
