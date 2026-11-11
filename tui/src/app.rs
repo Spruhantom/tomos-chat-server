@@ -20,7 +20,7 @@ impl App {
             should_quit: false,
             input_mode: false,
             input: String::new(),
-            status: "Offline · direct peer transport not implemented".into(),
+            status: "Offline · direct peer channel not connected".into(),
             selected_peer: 0,
             active_panel: 0,
             show_help: false,
@@ -46,7 +46,7 @@ impl App {
         self.input_mode = false;
         if line.is_empty() { return; }
         if let Some(command) = line.strip_prefix('/') { self.command(command); }
-        else { self.messages.push("Not sent: direct transport and end-to-end encryption are not implemented yet.".into()); }
+        else { self.messages.push("Not sent: the TUI composer is not yet connected to an authenticated peer channel.".into()); }
     }
     fn command(&mut self, command: &str) {
         let mut parts = command.split_whitespace();
