@@ -3,7 +3,7 @@
 
 use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use tomchat_noise::{NoiseSession, NoiseSessionError};
+use tomchat_noise::{protocol::AppFrame, NoiseSession, NoiseSessionError};
 
 const MAX_HANDSHAKE: usize = 65_535;
 const MAX_CIPHERTEXT: usize = 65_535;
