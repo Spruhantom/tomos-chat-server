@@ -48,8 +48,9 @@ class PeerConversationSession(
         history.append(message)
         return try {
             channel.send(EncryptedAppFrame(EncryptedAppFrame.Type.TEXT, message.id, text.toByteArray(Charsets.UTF_8)))
-            history.updateStatus(message.id, StoredMessageStatus.SENT)
-            message.copy(status = StoredMessageStatus.SENT)
+            // A successful socket write is not delivery. Keep QUEUED until the
+            // remote peer persists the message and returns its encrypted ACK.
+            message
         } catch (error: Exception) {
             statusRef.set(PeerConnectionStatus.FAILED)
             try { history.updateStatus(message.id, StoredMessageStatus.FAILED) } catch (_: IOException) { }
@@ -61,8 +62,14 @@ class PeerConversationSession(
     fun receiveText(): StoredChatMessage {
         check(status == PeerConnectionStatus.CONNECTED) { "Encrypted peer connection is not active." }
         return try {
-            val frame = channel.receive()
-            require(frame.type == EncryptedAppFrame.Type.TEXT) { "Unexpected non-text frame in a text conversation." }
+            while (true) {
+                val frame = channel.receive()
+                if (frame.type == EncryptedAppFrame.Type.ACKNOWLEDGEMENT) {
+                    require(frame.payload.isEmpty()) { "Acknowledgement payload must be empty." }
+                    history.updateStatus(frame.messageId, StoredMessageStatus.SENT)
+                    continue
+                }
+                require(frame.type == EncryptedAppFrame.Type.TEXT) { "Unexpected non-text frame in a text conversation." }
             val decoder = Charsets.UTF_8.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
@@ -77,12 +84,25 @@ class PeerConversationSession(
                 body = body
             )
             history.append(message)
-            message
+            channel.send(EncryptedAppFrame(EncryptedAppFrame.Type.ACKNOWLEDGEMENT, message.id, byteArrayOf()))
+            return message
+            }
+            error("Unreachable receive state.")
         } catch (error: Exception) {
             statusRef.set(PeerConnectionStatus.FAILED)
             if (error is IOException) throw error
             throw IOException("Encrypted conversation frame was rejected.", error)
         }
+    }
+
+    /** Re-send locally queued messages after a new authenticated connection. */
+    fun retryQueuedMessages() {
+        check(status == PeerConnectionStatus.CONNECTED)
+        history.load(peerFingerprint)
+            .filter { it.direction == StoredMessageDirection.OUTGOING && it.status == StoredMessageStatus.QUEUED }
+            .forEach { message ->
+                channel.send(EncryptedAppFrame(EncryptedAppFrame.Type.TEXT, message.id, message.body.toByteArray(Charsets.UTF_8)))
+            }
     }
 
     override fun close() {
