@@ -35,3 +35,8 @@ Configuration is stored under XDG_CONFIG_HOME/tomchat/config.json (normally ~/.c
 
 ## Planned integration
 The next milestone is a shared Rust peer core for identity, discovery, direct transport, local encrypted storage and reviewed end-to-end cryptography. Network delivery must remain peer-to-peer; the application must clearly report when a peer cannot be reached.
+
+
+## Linux device identity
+
+The Linux TUI stores its X25519 static keypair in the desktop Secret Service through the system keyring (GNOME Keyring, KWallet or another compatible provider). Unlock the keyring before starting TomChat, then run `/identity` in the TUI to create or load the local identity and display its public key. If the Secret Service is unavailable, identity setup fails closed; TomChat does not fall back to writing private keys into its config file. This is an initial credential-store integration, not yet a complete contact-card or peer-session UI.
