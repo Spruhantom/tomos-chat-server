@@ -6,7 +6,7 @@ The application is being developed around a shared Rust core, with Android and L
 
 **Important network limitation:** many mobile networks and home routers use carrier-grade NAT or restrictive firewalls. Without relays or rendezvous infrastructure, some remote peers will be unreachable. TomChat must report that honestly rather than silently route through central infrastructure.
 
-**Current implementation status:** the Android app, Android Keystore identity store, signed contact-card binding, Rust Noise XX core, JNI bridge and direct TCP encrypted-channel classes have been migrated. The Linux client now depends on the same Rust Noise core and includes a loopback direct-TCP handshake/message test. The Linux UI now has an initial desktop Secret Service identity setup command (`/identity`); the composer is not yet wired to the peer channel. Full app messaging, reliable offline delivery and calling still require integration and real-device validation. The cryptographic prototype is not independently audited and must not be described as production-ready.
+**Current implementation status:** the Android app, Android Keystore identity store, signed contact-card binding, Rust Noise XX core, JNI bridge and direct TCP encrypted-channel classes have been migrated. The Linux client now depends on the same Rust Noise core and includes a loopback direct-TCP handshake/message test. The Linux UI now has an initial desktop Secret Service identity setup command (`/identity`). The shared protocol now includes an Android-compatible application frame codec and a Linux Noise-channel API for sending/receiving those frames; the composer is not yet wired to the peer channel. Android now has a direct Noise-pinned TCP listener/connector and encrypted ACK/outbox APIs, but the Compose chat UI is still not wired to them. Full app messaging, reliable offline delivery and calling still require integration and real-device validation. The cryptographic prototype is not independently audited and must not be described as production-ready.
 
 ## Repository layout
 - `android/` — Kotlin/Jetpack Compose Android client, direct peer transport and local encrypted storage.
@@ -33,8 +33,8 @@ cargo test
 ``
 
 ## Current limitations
-- The Linux direct TCP/Noise adapter has a loopback test, but the TUI screens are not yet wired to it.
-- Persistent Linux identity storage, peer discovery and message synchronisation remain to be implemented.
+- Linux and Android have direct Noise transport APIs and loopback tests, plus a shared application-frame golden vector; a physical Android-to-Linux interop test and end-user UI integration remain outstanding.
+- Linux TUI peer/contact management and persistent outbox/ACK handling remain to be implemented.
 - The cryptographic protocol and device-key lifecycle require implementation, independent review and adversarial testing.
 - Voice/video, file transfer, multi-device replication and background delivery are not yet implemented.
 
