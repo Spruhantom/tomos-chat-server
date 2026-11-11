@@ -1,17 +1,26 @@
 # Repository consolidation
 
-This repository is the primary TomChat project following the move to a self-hosted server architecture.
+This repository is being realigned around TomChat's decentralised peer-to-peer product direction.
 
-## Imported scope
-The planned consolidation brings across the TUI foundation (Rust/Ratatui source, Cargo manifest, Arch PKGBUILD and usage guide), relevant Android product/design documentation, and the TUI roadmap. Earlier zero-server architecture records are historical only and must not override the active server-backed architecture.
+## Active scope
+- Rust shared protocol and networking core.
+- Android client using Kotlin/Jetpack Compose and a narrow Rust FFI.
+- Linux terminal client using Rust/Ratatui.
+- Local-first identity, encrypted storage and outbox.
+- Direct Bluetooth, Wi-Fi LAN and reachable direct-IP transports.
+- Signed contact cards and user-controlled peer discovery.
 
-## Outstanding migration
-The Android application source tree and its native Rust/JNI implementation have not yet been copied. They require a separate source migration and Android build validation. Imported Android design material must be reconciled with the server-backed direction before implementation resumes.
+## Removed from the active project
+The central Go/PostgreSQL messaging backend, account API, hosted message persistence, deployment manifests, service units and centralised package workflow have been removed from this development branch. The project must not reintroduce central dependencies as a shortcut for discovery, delivery, notifications or media traversal.
 
-## Current limitations
-- Client-side cryptography and device-key distribution are not complete.
-- TUI is not yet connected to the server and does not send messages.
-- Voice/video, account recovery, admin UI and multi-instance WebSocket fan-out are not implemented.
-- Do not expose the service publicly until TLS, production rate limiting, monitoring and security review are complete.
+## Migration status
+The current repository contains the TUI foundation and architecture documentation. The Android application and its native Rust/JNI work from the former client project still need to be reviewed and migrated into this repository. The TUI is not yet a functioning messenger.
 
-Source project: https://github.com/Spruhantom/tomos-chat-cliant
+## Next work
+1. Inspect and migrate the existing Android identity/contact-card and direct-peer prototype.
+2. Extract a shared Rust core with a documented FFI contract.
+3. Implement and test authenticated direct transport.
+4. Integrate a reviewed pairwise E2EE protocol and persistent encrypted outbox.
+5. Validate Bluetooth and Wi-Fi on two physical devices before expanding remote direct-IP support.
+
+Original client source: https://github.com/Spruhantom/tomos-chat-cliant
