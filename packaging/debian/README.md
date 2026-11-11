@@ -11,7 +11,7 @@ Install build tools:
 
 From the repository root:
 
-    ./packaging/debian/build-packages.sh
+    bash packaging/debian/build-packages.sh
 
 The script produces:
 - build/deb/tomchat-server_VERSION_amd64.deb
