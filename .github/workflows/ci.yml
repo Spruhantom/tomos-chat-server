@@ -1,4 +1,4 @@
-name: server-ci
+name: TomChat Linux client CI
 
 on:
   push:
@@ -8,42 +8,24 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  tui:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      TOMCHAT_TEST_DATABASE_URL: postgres://tomchat:tomchat-test-password@localhost:5432/tomchat_test?sslmode=disable
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: tomchat
-          POSTGRES_PASSWORD: tomchat-test-password
-          POSTGRES_DB: tomchat_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U tomchat -d tomchat_test"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
+    defaults:
+      run:
+        working-directory: tui
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          go-version: '1.23'
-          cache: true
-      - name: Verify pinned Go module manifest and checksums
-        run: go mod tidy -diff
-      - name: Format Go source
-        run: |
-          gofmt -w .
-          test -z "$(gofmt -l .)"
-      - name: Verify dependency checksums
-        run: go mod verify
-      - name: Run static analysis
-        run: go vet ./...
-      - name: Run race-enabled tests
-        run: go test -race ./...
-      - name: Build server
-        run: go build ./cmd/tomchat-server
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tui
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Compile
+        run: cargo check
+      - name: Run tests
+        run: cargo test
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
