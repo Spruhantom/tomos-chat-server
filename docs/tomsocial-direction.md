@@ -1,7 +1,7 @@
 # TomSocial direction
 
-TomSocial is a possible later social layer for TomChat. It should reuse TomChat account/device identity and reviewed client-side cryptography rather than introducing a second identity system.
+TomSocial is a possible later social layer for TomChat. It should reuse locally held TomChat device identity and reviewed cryptography rather than introducing a second identity system.
 
-Under the selected self-hosted model, social content and metadata may be stored by the user's chosen TomChat Server, but private content must remain end-to-end encrypted where applicable. Public content visibility, moderation, retention, federation between independent servers and abuse handling require separate product and threat-model decisions before implementation.
+Public posts and profile updates are signed objects exchanged directly between known peers. Each user's devices retain local copies. Users may explicitly replicate selected public content to their own trusted devices. There is no shared relay, global index or central feed database.
 
-No global public directory or universal discoverability is promised. Users should understand which server hosts their account and content.
+Global searchable discovery is not promised. Public content visibility, moderation, retention, synchronisation and abuse handling require separate product and threat-model decisions before implementation.
