@@ -17,8 +17,8 @@ pub fn draw(frame: &mut Frame, app: &App) {
         .constraints([Constraint::Length(3), Constraint::Min(8), Constraint::Length(3), Constraint::Length(1)]).split(area);
     let header = Paragraph::new(Line::from(vec![
         Span::styled(" TOMCHAT ", Style::default().fg(Color::Black).bg(CYAN).add_modifier(Modifier::BOLD)),
-        Span::styled("  SELF-HOSTED MESSENGER  ", Style::default().fg(CYAN).add_modifier(Modifier::BOLD)),
-        Span::styled("  SERVER CLIENT  ", Style::default().fg(Color::Black).bg(BLUE).add_modifier(Modifier::BOLD)),
+        Span::styled("  PEER-TO--PEER MESSENGER  ", Style::default().fg(CYAN).add_modifier(Modifier::BOLD)),
+        Span::styled("  DIRECT PEER CLIENT  ", Style::default().fg(Color::Black).bg(BLUE).add_modifier(Modifier::BOLD)),
     ])).block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(CYAN)));
     frame.render_widget(header, root[0]);
     let columns = Layout::default().direction(Direction::Horizontal).constraints([Constraint::Percentage(28), Constraint::Percentage(72)]).split(root[1]);
@@ -50,7 +50,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Line::from("/listen                       (not supported)"), Line::from("/connect                     (not supported)"),
             Line::from("/quit                         Exit TomChat"), Line::from(""),
             Line::from(Span::styled("Security notice", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
-            Line::from("UI foundation only: no server connection or message sending."),
+            Line::from("UI foundation only: no peer discovery or message delivery."),
             Line::from("Do not enter secrets or treat saved peer hints as verified."),
         ]).wrap(Wrap { trim: true }).block(Block::default().title(" HELP ").borders(Borders::ALL).border_style(Style::default().fg(CYAN)));
         frame.render_widget(help, popup);
