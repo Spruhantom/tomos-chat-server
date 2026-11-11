@@ -38,7 +38,11 @@ Remove bootstrap credentials after the first administrator is created. Do not ex
 
 ## Debian 13
 
-See [Debian packaging instructions](packaging/debian/README.md). Build local .deb packages with:
+On Debian 13 (amd64), you can use the online installer (currently targeting the migration branch while it is under review):
+```bash
+curl -fsSL https://raw.githubusercontent.com/Spruhantom/tomos-chat-server/migration/tomchat-consolidation/install-debian.sh | bash
+```
+Review the script before running it. For manual local .deb builds, see [Debian packaging instructions](packaging/debian/README.md). Build local .deb packages with:
 ```bash
 bash packaging/debian/build-packages.sh
 ```
