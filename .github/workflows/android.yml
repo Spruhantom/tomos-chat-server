@@ -49,6 +49,9 @@ jobs:
       - name: Run unit tests
         run: gradle --no-daemon :android:app:testDebugUnitTest
 
+      - name: Compile Android instrumentation tests
+        run: gradle --no-daemon :android:app:compileDebugAndroidTestKotlin
+
       - name: Build debug APK
         run: gradle --no-daemon :android:app:assembleDebug
 
