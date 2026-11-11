@@ -49,7 +49,7 @@ Maintainer: TomChat Project <maintainers@tomchat.invalid>
 Description: TomChat terminal client foundation
  Rust and Ratatui terminal interface for the TomChat platform.
  This release is a UI foundation and does not yet send messages.
-Depends: ${shlibs:Depends}, ${misc:Depends}, libc6
+Depends: libc6
 CONTROL
 
 cat > "$WORK/server/etc/tomchat/tomchat-server.env" <<'ENV'
