@@ -6,10 +6,12 @@ The application is being developed around a shared Rust core, with Android and L
 
 **Important network limitation:** many mobile networks and home routers use carrier-grade NAT or restrictive firewalls. Without relays or rendezvous infrastructure, some remote peers will be unreachable. TomChat must report that honestly rather than silently route through central infrastructure.
 
-**Current implementation status:** the Rust/Ratatui terminal application is a user-interface foundation with local contact hints. It does not yet establish peer connections, encrypt or deliver messages. End-to-end cryptography, device-key management, reliable offline delivery and calling must not be described as complete until implemented and tested.
+**Current implementation status:** the Android app, Android Keystore identity store, signed contact-card binding, Rust Noise XX core, JNI bridge and direct TCP encrypted-channel classes have been migrated. The Linux client now depends on the same Rust Noise core and includes a loopback direct-TCP handshake/message test. The Linux UI is not yet wired to a persistent local identity provider or the peer channel. Full app messaging, reliable offline delivery and calling still require integration and real-device validation. The cryptographic prototype is not independently audited and must not be described as production-ready.
 
 ## Repository layout
-- `tui/` — Rust/Ratatui Linux terminal client foundation.
+- `android/` — Kotlin/Jetpack Compose Android client, direct peer transport and local encrypted storage.
+- `core/noise/` — shared Rust Noise XX protocol engine with Android JNI feature.
+- `tui/` — Rust/Ratatui Linux terminal client and direct TCP transport adapter.
 - `docs/architecture.md` — active peer-to-peer architecture and transport constraints.
 - `docs/tui-roadmap.md` — Linux client development milestones.
 - `docs/account-age-safety.md` — safety requirements.
