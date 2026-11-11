@@ -12,7 +12,7 @@ tasks.register<org.gradle.api.tasks.Exec>("buildTomChatNoise") {
     group = "build"
     description = "Build the Rust Noise core for supported Android ABIs."
     inputs.file(nativeNoiseManifest)
-    inputs.dir(rootProject.file("android/native/tomchat-noise/src"))
+    inputs.dir(rootProject.file("core/noise/src"))
     outputs.dir(nativeNoiseOutput)
     workingDir = rootProject.projectDir
     commandLine(
