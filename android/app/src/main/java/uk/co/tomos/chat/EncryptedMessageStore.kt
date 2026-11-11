@@ -54,6 +54,16 @@ class EncryptedMessageStore(filesDir: File) {
     }
 
     @Throws(IOException::class)
+    fun loadQueuedOutgoing(peerFingerprint: String): List<StoredChatMessage> = synchronized(lock) {
+        if (!file.baseFile.exists()) return@synchronized emptyList()
+        decryptSnapshot().filter {
+            it.peerFingerprint == peerFingerprint &&
+                it.direction == StoredMessageDirection.OUTGOING &&
+                it.status == StoredMessageStatus.QUEUED
+        }.sortedBy { it.createdAtEpochMillis }
+    }
+
+    @Throws(IOException::class)
     fun append(message: StoredChatMessage) = synchronized(lock) {
         val records = if (file.baseFile.exists()) decryptSnapshot().toMutableList() else mutableListOf()
         records.removeAll { it.id == message.id }
