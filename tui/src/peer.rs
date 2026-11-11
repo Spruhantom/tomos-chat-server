@@ -76,6 +76,19 @@ impl PeerChannel {
         Ok(self.noise.decrypt(&ciphertext)?)
     }
 
+
+    /// Send a versioned Android-compatible application envelope inside Noise.
+    pub fn send_app(&mut self, frame: &AppFrame) -> Result<(), PeerError> {
+        let plaintext = frame.encode().map_err(|_| PeerError::InvalidFrame)?;
+        self.send(&plaintext)
+    }
+
+    /// Receive and validate an Android-compatible application envelope.
+    pub fn receive_app(&mut self) -> Result<AppFrame, PeerError> {
+        let plaintext = self.receive()?;
+        AppFrame::decode(&plaintext).map_err(|_| PeerError::InvalidFrame)
+    }
+
     pub fn peer_addr(&self) -> Result<SocketAddr, PeerError> { Ok(self.stream.peer_addr()?) }
 }
 
