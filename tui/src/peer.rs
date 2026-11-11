@@ -118,6 +118,36 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    fn direct_loopback_noise_xx_exchanges_android_compatible_app_frames() {
+        let (alice_private, alice_public) = NoiseSession::generate_static_keypair().unwrap();
+        let (bob_private, bob_public) = NoiseSession::generate_static_keypair().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let bob = thread::spawn(move || {
+            let mut channel = PeerChannel::accept(&listener, &bob_private, &alice_public).unwrap();
+            let received = channel.receive_app().unwrap();
+            assert_eq!(received.kind, tomchat_noise::protocol::FrameType::Text);
+            assert_eq!(received.message_id, [3; 16]);
+            assert_eq!(received.payload, b"hello from Android");
+            channel.send_app(&AppFrame {
+                kind: tomchat_noise::protocol::FrameType::Acknowledgement,
+                message_id: [3; 16],
+                payload: vec![],
+            }).unwrap();
+        });
+        let mut alice = PeerChannel::connect(address, &alice_private, &bob_public).unwrap();
+        alice.send_app(&AppFrame {
+            kind: tomchat_noise::protocol::FrameType::Text,
+            message_id: [3; 16],
+            payload: b"hello from Android".to_vec(),
+        }).unwrap();
+        let ack = alice.receive_app().unwrap();
+        assert_eq!(ack.kind, tomchat_noise::protocol::FrameType::Acknowledgement);
+        assert_eq!(ack.message_id, [3; 16]);
+        bob.join().unwrap();
+    }
+
+    #[test]
     fn direct_loopback_noise_xx_exchanges_encrypted_data_both_ways() {
         let (alice_private, alice_public) = NoiseSession::generate_static_keypair().unwrap();
         let (bob_private, bob_public) = NoiseSession::generate_static_keypair().unwrap();
