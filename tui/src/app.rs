@@ -20,14 +20,14 @@ impl App {
             should_quit: false,
             input_mode: false,
             input: String::new(),
-            status: "Offline · server not configured".into(),
+            status: "Offline · direct peer transport not implemented".into(),
             selected_peer: 0,
             active_panel: 0,
             show_help: false,
             messages: vec![
                 "Welcome to TomChat TUI.".into(),
-                "This is the terminal UI foundation; server transport is not enabled yet.".into(),
-                "Configure a self-hosted TomChat Server when API integration is implemented.".into(),
+                "Decentralised peer-to-peer messaging.".into(),
+                "This build is a UI foundation; no messages are sent.".into(),
             ],
         })
     }
@@ -46,7 +46,7 @@ impl App {
         self.input_mode = false;
         if line.is_empty() { return; }
         if let Some(command) = line.strip_prefix('/') { self.command(command); }
-        else { self.messages.push("Not sent: server API and client encryption are not integrated.".into()); }
+        else { self.messages.push("Not sent: direct transport and end-to-end encryption are not implemented yet.".into()); }
     }
     fn command(&mut self, command: &str) {
         let mut parts = command.split_whitespace();
@@ -66,13 +66,13 @@ impl App {
                             self.status = "Peer fingerprint must be 64 hexadecimal characters.".into();
                         } else {
                             self.config.peers.push(Peer { name: name.to_string(), fingerprint: fingerprint.to_ascii_lowercase(), address: address.to_string() });
-                            self.status = format!("Added local peer record for {name}; trust verification is still required.");
+                            self.status = format!("Saved local peer hint for {name}; verify the fingerprint out of band before trusting it.");
                         }
                     }
                     _ => self.status = "Usage: /add-peer <name> <sha256-fingerprint> <host:port>".into(),
                 }
             }
-            "listen" | "connect" => self.status = "Direct peer networking is not part of the selected server architecture.".into(),
+            "listen" | "connect" => self.status = "Direct networking is planned but not yet implemented.".into(),
             _ => self.status = format!("Unknown command: /{command}. Press F1 for help."),
         }
     }
