@@ -18,7 +18,7 @@ jobs:
       - name: Install build dependencies
         run: |
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git build-essential golang-go cargo rustc dpkg-dev pkg-config
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git build-essential golang-go cargo rustc rustfmt clippy nodejs dpkg-dev pkg-config
       - uses: actions/checkout@v4
       - name: Test Go server
         run: |
@@ -36,7 +36,6 @@ jobs:
           cargo clippy --all-targets -- -D warnings
       - name: Build Debian packages
         run: |
-          chmod +x packaging/debian/build-packages.sh
-          ./packaging/debian/build-packages.sh
+          bash packaging/debian/build-packages.sh
           dpkg-deb --info build/deb/tomchat-server_*.deb
           dpkg-deb --info build/deb/tomchat-tui_*.deb
