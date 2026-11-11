@@ -41,6 +41,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.DisposableEffect
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
+import java.net.InetSocketAddress
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -399,7 +403,7 @@ private fun TomChatApp(
 @Composable
 private fun DestinationScreen(destination: Destination, profile: AccountProfile, contactCard: String?) {
     when (destination) {
-        Destination.Chats -> ChatsScreen()
+        Destination.Chats -> ChatsScreen(profile)
         Destination.Contacts -> ContactsScreen(profile, contactCard)
         Destination.Calls -> CallsScreen()
         Destination.Settings -> SettingsScreen(profile)
@@ -492,38 +496,236 @@ private fun ScreenTitle(title: String, subtitle: String) {
 }
 
 @Composable
-private fun ChatsScreen() {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        ScreenTitle("Messages", "A private space for direct conversations.")
-        StatusCard()
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp)) {
-            Text("INBOX", color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp)
-            Spacer(Modifier.height(12.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Panel),
-                border = BorderStroke(1.dp, Raised),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                EmptyState(
-                    glyph = "✉",
-                    title = "Your inbox is ready",
-                    body = "The conversation interface is being prepared. Messaging will become available only after the secure peer session and account safety checks are complete."
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Raised.copy(alpha = 0.55f)),
-                border = BorderStroke(1.dp, Cyan.copy(alpha = 0.18f)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("BUILT FOR DIRECT CONNECTIONS", color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
-                    Text("No central chat servers", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text("TomChat is designed for device-to-device communication. Both peers need a reachable direct connection; offline delivery and global reachability are not guaranteed.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+private fun ChatsScreen(profile: AccountProfile) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val contactsStore = remember { TrustedContactStore(context.filesDir) }
+    val identityStore = remember { NoiseIdentityStore(context.filesDir) }
+    val historyStore = remember { EncryptedMessageStore(context.filesDir) }
+    var trusted by remember { mutableStateOf<List<TrustedContact>>(emptyList()) }
+    var selectedFingerprint by rememberSaveable { mutableStateOf("") }
+    var address by rememberSaveable { mutableStateOf("") }
+    var port by rememberSaveable { mutableStateOf("47821") }
+    var draft by rememberSaveable { mutableStateOf("") }
+    var messages by remember { mutableStateOf<List<StoredChatMessage>>(emptyList()) }
+    var activeSession by remember { mutableStateOf<PeerConversationSession?>(null) }
+    var listener by remember { mutableStateOf<DirectNoisePeerListener?>(null) }
+    var connectionStatus by remember { mutableStateOf("Offline · no direct peer connected") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var receiveJob by remember { mutableStateOf<Job?>(null) }
+    val selectedContact = trusted.firstOrNull { it.fingerprint == selectedFingerprint }
+    val allowed = AccountSafetyPolicy.allows(profile.safetyState(), TomChatCapability.MESSAGE_APPROVED_CONTACT)
+
+    LaunchedEffect(contactsStore) {
+        try {
+            trusted = withContext(Dispatchers.IO) { contactsStore.load() }
+            if (selectedFingerprint.isBlank()) selectedFingerprint = trusted.firstOrNull()?.fingerprint.orEmpty()
+        } catch (failure: Exception) {
+            error = failure.message ?: "Could not load trusted contacts."
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            receiveJob?.cancel()
+            activeSession?.close()
+            listener?.close()
+        }
+    }
+
+    fun receiveLoop(session: PeerConversationSession, fingerprint: String) {
+        receiveJob?.cancel()
+        receiveJob = scope.launch(Dispatchers.IO) {
+            try {
+                while (isActive) {
+                    session.receiveText()
+                    val latest = historyStore.load(fingerprint)
+                    withContext(Dispatchers.Main) { messages = latest }
+                }
+            } catch (failure: Exception) {
+                withContext(Dispatchers.Main) {
+                    if (activeSession === session) {
+                        connectionStatus = "Disconnected · " + (failure.message ?: "peer connection ended")
+                        activeSession = null
+                    }
                 }
             }
+        }
+    }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        ScreenTitle("Messages", "Direct encrypted conversations with trusted devices.")
+        if (!allowed) {
+            StatusCard()
+            EmptyState(
+                glyph = "⌁",
+                title = "Messaging is locked",
+                body = AccountSafetyPolicy.restrictionReason(profile.safetyState()) +
+                    " Direct messaging stays disabled until required age assurance and, where applicable, guardian approval are completed."
+            )
+            return@Column
+        }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("TRUSTED CONTACT", color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            if (trusted.isEmpty()) {
+                Text("Add and verify a contact in Contacts before connecting.", color = Muted, fontSize = 12.sp)
+            } else {
+                trusted.forEach { contact ->
+                    TextButton(onClick = {
+                        selectedFingerprint = contact.fingerprint
+                        activeSession?.close()
+                        activeSession = null
+                        messages = emptyList()
+                        connectionStatus = "Selected " + contact.displayName
+                    }) {
+                        Text(
+                            (if (contact.fingerprint == selectedFingerprint) "● " else "○ ") +
+                                contact.displayName +
+                                if (contact.noiseStaticPublicKey?.size == 32) " · Noise key verified" else " · no Noise key",
+                            color = if (contact.fingerprint == selectedFingerprint) Cyan else TextPrimary
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = address,
+                onValueChange = { address = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Peer IP address or hostname") },
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = port,
+                onValueChange = { port = it.filter(Char::isDigit).take(5) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("TCP port") },
+                singleLine = true
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = selectedContact?.noiseStaticPublicKey?.size == 32 &&
+                        (port.toIntOrNull() ?: 0) in 1..65535 && address.isNotBlank() && activeSession == null,
+                    onClick = {
+                        val contact = selectedContact ?: return@Button
+                        val targetAddress = address.trim()
+                        val targetPort = port.toInt()
+                        connectionStatus = "Connecting directly…"
+                        error = null
+                        scope.launch {
+                            try {
+                                val session = withContext(Dispatchers.IO) {
+                                    val identity = identityStore.getOrCreate()
+                                    try {
+                                        val channel = DirectNoisePeerConnector.connect(targetAddress, targetPort, identity, contact)
+                                        PeerConversationSession(contact.fingerprint, channel, historyStore)
+                                    } finally {
+                                        identity.privateKey.fill(0)
+                                    }
+                                }
+                                activeSession = session
+                                messages = withContext(Dispatchers.IO) { historyStore.load(contact.fingerprint) }
+                                withContext(Dispatchers.IO) { session.retryQueuedMessages() }
+                                connectionStatus = "Encrypted direct connection · " + contact.displayName
+                                receiveLoop(session, contact.fingerprint)
+                            } catch (failure: Exception) {
+                                connectionStatus = "Connection failed · no relay fallback"
+                                error = failure.message ?: "Direct connection failed."
+                            }
+                        }
+                    }
+                ) { Text("Connect") }
+                Button(
+                    enabled = selectedContact?.noiseStaticPublicKey?.size == 32 &&
+                        (port.toIntOrNull() ?: 0) in 1..65535 && activeSession == null && listener == null,
+                    onClick = {
+                        val contact = selectedContact ?: return@Button
+                        val listenPort = port.toInt()
+                        error = null
+                        connectionStatus = "Starting direct listener…"
+                        scope.launch {
+                            var identity: NoiseIdentity? = null
+                            var localListener: DirectNoisePeerListener? = null
+                            try {
+                                val channel = withContext(Dispatchers.IO) {
+                                    identity = identityStore.getOrCreate()
+                                    localListener = DirectNoisePeerListener(InetSocketAddress("0.0.0.0", listenPort), identity!!)
+                                    localListener!!.start()
+                                    withContext(Dispatchers.Main) {
+                                        listener = localListener
+                                        connectionStatus = "Listening on TCP port " + listenPort
+                                    }
+                                    localListener!!.accept(contact)
+                                }
+                                identity?.privateKey?.fill(0)
+                                listener = null
+                                localListener?.close()
+                                val session = PeerConversationSession(contact.fingerprint, channel, historyStore)
+                                activeSession = session
+                                messages = withContext(Dispatchers.IO) { historyStore.load(contact.fingerprint) }
+                                withContext(Dispatchers.IO) { session.retryQueuedMessages() }
+                                connectionStatus = "Encrypted direct connection · " + contact.displayName
+                                receiveLoop(session, contact.fingerprint)
+                            } catch (failure: Exception) {
+                                identity?.privateKey?.fill(0)
+                                localListener?.close()
+                                listener = null
+                                connectionStatus = "Listener stopped · no relay fallback"
+                                error = failure.message ?: "Could not accept direct peer connection."
+                            }
+                        }
+                    }
+                ) { Text("Listen") }
+            }
+            Text(connectionStatus, color = Cyan, fontSize = 11.sp)
+            error?.let { Text(it, color = Color(0xFFFF6B83), fontSize = 11.sp) }
+            Text("Share your reachable LAN address and port with the trusted contact. This device must remain reachable; there is no relay or offline mailbox.", color = Muted, fontSize = 11.sp)
+            if (listener != null) {
+                TextButton(onClick = {
+                    listener?.close()
+                    listener = null
+                    connectionStatus = "Listener closed"
+                }) { Text("Stop listening") }
+            }
+            Text("CONVERSATION", color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            messages.forEach { message ->
+                Text(
+                    (if (message.direction == StoredMessageDirection.OUTGOING) "You: " else (selectedContact?.displayName ?: "Peer") + ": ") +
+                        message.body + " · " + message.status.name.lowercase(),
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.fillMaxWidth().background(Panel, RoundedCornerShape(10.dp)).padding(10.dp)
+                )
+            }
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it.take(16 * 1024) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Message") },
+                enabled = activeSession != null
+            )
+            Button(
+                enabled = activeSession != null && draft.isNotBlank(),
+                onClick = {
+                    val session = activeSession ?: return@Button
+                    val text = draft
+                    draft = ""
+                    scope.launch {
+                        try {
+                            val saved = withContext(Dispatchers.IO) { session.sendText(text) }
+                            messages = withContext(Dispatchers.IO) { historyStore.load(saved.peerFingerprint) }
+                        } catch (failure: Exception) {
+                            error = failure.message ?: "Message could not be queued."
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Send encrypted message") }
+            TextButton(onClick = {
+                receiveJob?.cancel()
+                activeSession?.close()
+                activeSession = null
+                connectionStatus = "Disconnected"
+            }, enabled = activeSession != null) { Text("Disconnect") }
         }
     }
 }
