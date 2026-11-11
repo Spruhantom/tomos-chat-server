@@ -1,30 +1,58 @@
-# TomChat architecture
+# TomChat peer-to-peer architecture
 
 ## Product direction
-TomChat is a self-hosted messaging platform. Users and communities operate their own server instances; clients connect to a server selected by the user or administrator. There is no single mandatory public TomChat service.
+TomChat is a decentralised application. Each installation owns its identity and local data. Devices communicate directly with other devices; there is no central account authority, message store, relay, rendezvous service, push gateway or public peer directory.
 
-The Go server manages accounts, sessions, conversation membership, durable ciphertext storage, history pagination and authenticated realtime delivery. It must never receive plaintext message content. Client-side end-to-end cryptography and device-key distribution remain incomplete until implemented and independently reviewed.
+## Client architecture
+- Android: Kotlin/Jetpack Compose owns UI, lifecycle, permissions, notifications and audio routing.
+- Shared core: Rust owns peer identity, protocol state, discovery, transport selection, encrypted message envelopes, synchronisation and group-state integration.
+- Linux: Rust/Ratatui terminal client uses the shared core rather than a separate protocol implementation.
+- FFI: keep the Kotlin/Rust boundary small, typed, versioned and asynchronous.
 
-## Server components
-- Go HTTP API and authenticated WebSocket endpoint.
-- PostgreSQL durable source of truth for accounts, sessions, conversations, membership and opaque encrypted messages.
-- Argon2id password hashing and hashed bearer-token storage.
-- Per-process login throttling, bounded request timeouts and bounded realtime queues.
-- Client-generated message IDs for idempotent submission.
-- Sequence cursors and paginated history for reconnect recovery.
+## Direct discovery
+- Bluetooth LE advertisements and GATT for nearby discovery and bounded data exchange.
+- Bluetooth Classic RFCOMM where device support and pairing permit it.
+- mDNS/local multicast for devices on the same Wi-Fi network.
+- QR, NFC or user-shared signed contact cards for out-of-band identity and connection hints.
+- Existing trusted peers may exchange signed reachability updates directly.
+- No global stranger search is promised. Discovery is limited to nearby devices, known contacts and information users exchange themselves.
 
-The realtime hub is process-local; the supported deployment is a single server instance. Multi-instance fan-out requires shared pub/sub and testing.
+Use rotating privacy-preserving discovery identifiers. Do not broadcast stable identity keys, names, phone numbers or location.
 
-## Client responsibilities
-Android, terminal and desktop clients must authenticate to a user-configured server over TLS in production; encrypt content before submission; verify recipient/device identity; manage keys locally; decrypt only on authorised devices; protect private keys with platform secure storage; never log plaintext, credentials or key material; and recover missed events from paginated history.
+## Direct transport
+Select a direct path based on reachability and measured conditions:
+1. Bluetooth LE for nearby discovery and small control payloads.
+2. Bluetooth Classic for nearby data transfer where supported.
+3. Wi-Fi LAN for higher-throughput local transfers.
+4. Direct QUIC/IP for remote peers when both endpoints are reachable.
 
-TLS protects client-server transport but is not E2EE. Do not describe the current transport boundary as complete end-to-end encryption.
+The application must never introduce a relay, rendezvous, proxy, hosted directory or fallback path. Carrier-grade NAT and restrictive firewalls mean some remote peers cannot connect. Report unreachable peers clearly. Do not imply guaranteed delivery while a recipient is offline.
 
-## Message envelope
-The API accepts client-generated message UUIDs, base64 ciphertext, base64 nonce, encryption version and optional key ID. The server stores ciphertext as opaque bytes and does not accept a plaintext body field. The cryptographic envelope, key establishment, rotation, device enrolment and group-key protocol still require implementation and review.
+Bluetooth data transports are not assumed to provide reliable low-latency voice. Initial calls require a separately validated direct IP/Wi-Fi media path and real-device testing.
 
-## Deployment
-Default to private registration. Remove bootstrap credentials after first admin creation. Configure TLS before exposing beyond localhost. Add production-grade edge rate limiting, monitoring, backups, restore tests and security review. Do not horizontally scale the current WebSocket hub without shared fan-out.
+## Identity and cryptography
+Use maintained, reviewed cryptographic implementations; do not invent primitives or hand-roll a handshake. Device identity keys are generated locally and protected by platform secure storage. Contact cards are signed and include a fingerprint; self-signatures do not prove a real-world identity, so users must compare fingerprints through a separate trusted channel.
 
-## TUI status
-The Rust/Ratatui app under `tui/` is currently a UI and local peer-hint foundation only. It does not yet authenticate to the Go API, connect a WebSocket, encrypt or send messages. Its next milestone is API authentication and client-side encryption integration.
+Use a reviewed pairwise protocol and evaluate OpenMLS for groups. Bind device enrolment, key changes, revocation, group membership and backup recovery to explicit threat-model requirements. Encrypt before transport. No peer, including a forwarding device, may learn plaintext intended for another peer.
+
+## Messaging and synchronisation
+- Durable encrypted local outbox with stable message IDs.
+- Authenticated envelopes, replay protection, acknowledgements and per-conversation ordering.
+- Direct peer-to-peer history and state synchronisation when devices are reachable.
+- Pending messages remain encrypted on the sender's device and retry when the recipient becomes reachable.
+- No guaranteed mailbox exists while all recipient devices are offline.
+- Group membership changes are authenticated and auditable.
+- Explicit encrypted replication to trusted devices may be added; it must remain user-controlled.
+
+## Voice and files
+Voice signalling travels over an already authenticated peer channel or is exchanged out of band. Evaluate an audited media stack and authenticated media encryption; do not add network traversal services. Group voice begins as a direct peer mesh with conservative participant limits. File transfer uses resumable encrypted chunks and authenticated manifests.
+
+## Privacy and safety
+- No plaintext in logs, crash reports or notifications by default.
+- Validate and bound every peer-controlled input; defend against spam, replay and resource exhaustion.
+- Provide block/report controls, contact approval and key-change warnings.
+- Explain that losing every device and the recovery secret can permanently lose identity and history.
+- Respect Android background limits; incoming alerts cannot be guaranteed when a device is offline, force-stopped or unreachable.
+
+## Implementation status
+The current TUI is only a local UI and contact-hint foundation. It does not yet perform discovery, establish a peer connection, encrypt, send or receive messages. All networking and cryptographic milestones require automated tests plus physical-device tests across Bluetooth, Wi-Fi and constrained remote networks.
