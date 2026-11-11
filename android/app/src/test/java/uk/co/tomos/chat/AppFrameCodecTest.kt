@@ -20,6 +20,21 @@ class AppFrameCodecTest {
         assertArrayEquals(payload, decoded.payload)
     }
 
+    @Test fun matchesRustGoldenVectorForTextFrame() {
+        val id = UUID(0x0001020304050607L, 0x08090a0b0c0d0e0fL)
+        val frame = EncryptedAppFrame(EncryptedAppFrame.Type.TEXT, id, byteArrayOf('h'.code.toByte(), 'i'.code.toByte()))
+        assertArrayEquals(byteArrayOf(
+            1, 1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+            0, 0, 0, 2, 'h'.code.toByte(), 'i'.code.toByte()
+        ), AppFrameCodec.encode(frame))
+    }
+
+    @Test fun acknowledgementMustHaveAnEmptyPayload() {
+        assertThrows(IllegalArgumentException::class.java) {
+            AppFrameCodec.encode(EncryptedAppFrame(EncryptedAppFrame.Type.ACKNOWLEDGEMENT, UUID.randomUUID(), byteArrayOf(1)))
+        }
+    }
+
     @Test fun rejectsOversizedPayloadOnEncode() {
         assertThrows(IllegalArgumentException::class.java) {
             AppFrameCodec.encode(EncryptedAppFrame(
