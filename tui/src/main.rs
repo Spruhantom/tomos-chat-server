@@ -1,4 +1,5 @@
 pub mod peer;
+pub mod identity;
 mod app;
 mod config;
 mod ui;
