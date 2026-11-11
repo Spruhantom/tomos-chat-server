@@ -1,11 +1,13 @@
 # Decision 0001: TomChat product baseline
 
-- Status: accepted for the consolidated repository.
-- Product direction: self-hosted server architecture.
-- Server: Go HTTP/WebSocket service with PostgreSQL persistence.
-- Clients: Android and terminal clients connect to a user-selected server.
-- Message privacy: server stores opaque ciphertext; clients own end-to-end encryption.
-- Security status: server-side encrypted-message transport exists, but client cryptography and device-key distribution remain incomplete.
-- Distribution: server and clients are independently buildable; Arch TUI package metadata is under `tui/PKGBUILD`.
+- Status: accepted.
+- Product: decentralised peer-to-peer messaging application.
+- Network: direct device-to-device connections only.
+- Discovery: Bluetooth LE, Bluetooth Classic where supported, local Wi-Fi discovery, and user-exchanged signed contact cards.
+- No central accounts, public directory, relay, rendezvous, push gateway or hosted message storage.
+- Identity and message keys are generated and controlled locally.
+- Messages must be end-to-end encrypted and authenticated before transmission.
+- Clients: Android and Linux terminal initially, sharing a Rust core.
+- Delivery: encrypted local outbox; no guaranteed delivery while recipients are unreachable.
 
-This decision supersedes the earlier zero-server architecture direction. Historical material is retained under `docs/history/` where imported.
+The previous centralised backend direction is rejected. This decision governs all new architecture and implementation work.
