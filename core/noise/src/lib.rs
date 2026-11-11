@@ -60,6 +60,11 @@ pub struct NoiseSession {
 }
 impl NoiseSession {
     /// Local private and pinned peer public keys are 32-byte X25519 keys.
+    pub fn generate_static_keypair() -> Result<(Vec<u8>, Vec<u8>), NoiseSessionError> {
+        let params: NoiseParams = PROTOCOL.parse().map_err(|_| NoiseSessionError::InvalidState("Invalid fixed Noise suite."))?;
+        let pair = Builder::new(params).generate_keypair()?;
+        Ok((pair.private, pair.public))
+    }
     pub fn initiator(local_private: &[u8], expected_peer_static: &[u8]) -> Result<Self, NoiseSessionError> {
         Self::build(local_private, expected_peer_static, true)
     }
