@@ -38,6 +38,9 @@ object AppFrameCodec {
 
     fun encode(frame: EncryptedAppFrame): ByteArray {
         require(frame.payload.size <= MAX_PAYLOAD_BYTES) { "Application payload exceeds limit." }
+        require(frame.type != EncryptedAppFrame.Type.ACKNOWLEDGEMENT || frame.payload.isEmpty()) {
+            "Acknowledgement payload must be empty."
+        }
         val output = ByteArrayOutputStream(HEADER_SIZE + frame.payload.size)
         DataOutputStream(output).use { data ->
             data.writeByte(VERSION)
@@ -62,6 +65,9 @@ object AppFrameCodec {
         require(payloadLength == input.remaining()) { "Truncated frame or unexpected trailing bytes." }
         val payload = ByteArray(payloadLength)
         input.get(payload)
+        require(type != EncryptedAppFrame.Type.ACKNOWLEDGEMENT || payload.isEmpty()) {
+            "Acknowledgement payload must be empty."
+        }
         return EncryptedAppFrame(type, id, payload)
     }
 }
