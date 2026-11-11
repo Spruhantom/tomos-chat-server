@@ -13,15 +13,27 @@ cargo build --release
 cargo run --release
 ```
 
-## Controls
-- `/` enter command/message mode
-- `F1` help
-- `Tab` switch panels
-- `Up/Down` select contact
-- `Esc` leave input mode
-- `q` quit
+## Build on Debian 13
 
-Configuration is stored under `$XDG_CONFIG_HOME/tomchat/config.json` (normally `~/.config/tomchat/config.json`) with owner-only file permissions.
+```bash
+sudo apt update
+sudo apt install -y cargo rustc pkg-config build-essential
+cd tui
+cargo build --release
+cargo run --release
+```
+
+For a packaged .deb, see ../packaging/debian/README.md.
+
+## Controls
+- / enter command/message mode
+- F1 help
+- Tab switch panels
+- Up/Down select contact
+- Esc leave input mode
+- q quit
+
+Configuration is stored under XDG_CONFIG_HOME/tomchat/config.json (normally ~/.config/tomchat/config.json) with owner-only file permissions.
 
 ## Planned integration
 The next milestone is authenticated API and WebSocket integration with the self-hosted TomChat Server, followed by client-side encryption. Server transport TLS is not a substitute for E2EE. The client must never submit plaintext message bodies.
