@@ -59,7 +59,7 @@ class PeerConversationSession(
     }
 
     @Throws(IOException::class)
-    fun receiveText(): StoredChatMessage {
+    fun receiveText(onAcknowledged: (UUID) -> Unit = {}): StoredChatMessage {
         check(status == PeerConnectionStatus.CONNECTED) { "Encrypted peer connection is not active." }
         return try {
             while (true) {
@@ -67,6 +67,7 @@ class PeerConversationSession(
                 if (frame.type == EncryptedAppFrame.Type.ACKNOWLEDGEMENT) {
                     require(frame.payload.isEmpty()) { "Acknowledgement payload must be empty." }
                     history.updateStatus(frame.messageId, StoredMessageStatus.SENT)
+                    onAcknowledged(frame.messageId)
                     continue
                 }
                 require(frame.type == EncryptedAppFrame.Type.TEXT) { "Unexpected non-text frame in a text conversation." }
