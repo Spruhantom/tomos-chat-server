@@ -1,8 +1,18 @@
 # Debian packaging
 
-TomChat supports Debian 13 (Trixie) as the initial Debian target. These scripts create local binary .deb packages from the source checkout; they are intended for development/testing and are not yet signed or published in an APT repository.
+TomChat supports Debian 13 (Trixie) on amd64 as the initial Debian target. These scripts create local binary .deb packages from source; they are intended for development/testing and are not yet signed or published in an APT repository.
 
-## Build packages
+## Online installer
+
+On Debian 13 (amd64), run the installer as your normal user:
+
+    curl -fsSL https://raw.githubusercontent.com/Spruhantom/tomos-chat-server/migration/tomchat-consolidation/install-debian.sh | bash
+
+It requests sudo when installing build dependencies and the generated packages. It builds both packages locally from the selected Git branch. Review the installer script before running it if you want to inspect exactly what it will do.
+
+The command above targets the migration branch while this work is under review. After the changes are merged, the command will use the `main` branch.
+
+## Build packages manually
 
 Install build tools:
 
@@ -17,9 +27,9 @@ The script produces:
 - build/deb/tomchat-server_VERSION_amd64.deb
 - build/deb/tomchat-tui_VERSION_amd64.deb
 
-It currently targets amd64. Rust and Go dependencies are downloaded by their respective build tools. For production Debian source packages, dependency vendoring, reproducible builds, signing and APT repository publication still need to be added.
+The package builder currently targets amd64. Go and Rust dependencies are downloaded by their respective build tools. For production Debian source packages, dependency vendoring, reproducible builds, signing and APT repository publication still need to be added.
 
-## Install the server
+## Install and configure the server manually
 
     sudo apt install ./build/deb/tomchat-server_*.deb
     sudoedit /etc/tomchat/tomchat-server.env
@@ -29,7 +39,7 @@ Set TOMCHAT_DATABASE_URL to a PostgreSQL connection string. Keep registration di
 
 The service binds to localhost by default. Put it behind a correctly configured TLS reverse proxy before remote access. The package does not install PostgreSQL or configure a database automatically.
 
-## Install the TUI
+## Install the TUI manually
 
     sudo apt install ./build/deb/tomchat-tui_*.deb
     tomchat
