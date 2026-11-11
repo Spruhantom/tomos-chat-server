@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -525,11 +526,14 @@ private fun ChatsScreen(profile: AccountProfile) {
         }
     }
 
+    val latestSession = rememberUpdatedState(activeSession)
+    val latestListener = rememberUpdatedState(listener)
+    val latestReceiveJob = rememberUpdatedState(receiveJob)
     DisposableEffect(Unit) {
         onDispose {
-            receiveJob?.cancel()
-            activeSession?.close()
-            listener?.close()
+            latestReceiveJob.value?.cancel()
+            latestSession.value?.close()
+            latestListener.value?.close()
         }
     }
 
