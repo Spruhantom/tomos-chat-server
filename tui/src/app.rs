@@ -56,6 +56,13 @@ impl App {
             "peers" => self.active_panel = 1,
             "chats" => self.active_panel = 0,
             "settings" => self.active_panel = 2,
+            "identity" => match crate::identity::DeviceIdentity::load_or_create() {
+                Ok(identity) => {
+                    let public_key = identity.public_key.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+                    self.status = format!("Device identity ready · X25519 public key: {public_key}");
+                }
+                Err(error) => self.status = format!("Identity unavailable: {error:#}"),
+            },
             "add-peer" => {
                 let name = parts.next();
                 let fingerprint = parts.next();
