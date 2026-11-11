@@ -36,7 +36,7 @@ Maintainer: TomChat Project <maintainers@tomchat.invalid>
 Description: Self-hosted TomChat messaging server
  Go HTTP and WebSocket server with PostgreSQL-backed accounts,
  conversations and opaque encrypted-message transport.
-Depends: ${shlibs:Depends}, ${misc:Depends}, libc6
+Depends: libc6
 CONTROL
 
 cat > "$WORK/tui/DEBIAN/control" <<CONTROL
