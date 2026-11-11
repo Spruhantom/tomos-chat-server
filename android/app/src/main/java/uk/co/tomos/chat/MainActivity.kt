@@ -542,7 +542,11 @@ private fun ChatsScreen(profile: AccountProfile) {
         receiveJob = scope.launch(Dispatchers.IO) {
             try {
                 while (isActive) {
-                    session.receiveText()
+                    session.receiveText {
+                        scope.launch(Dispatchers.Main) {
+                            messages = withContext(Dispatchers.IO) { historyStore.load(fingerprint) }
+                        }
+                    }
                     val latest = historyStore.load(fingerprint)
                     withContext(Dispatchers.Main) { messages = latest }
                 }
