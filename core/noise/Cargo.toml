@@ -1,0 +1,18 @@
+[package]
+name = "tomchat-noise"
+version = "0.3.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Shared TomChat direct peer Noise XX protocol core"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = []
+android-jni = ["dep:jni"]
+
+[dependencies]
+snow = "=0.10.0"
+zeroize = "=1.8.1"
+jni = { version = "=0.21.1", optional = true }

@@ -1,87 +1,49 @@
-# TomChat Server
+# TomChat
 
-Self-hosted TomChat backend for Debian 13.
+TomChat is a decentralised, peer-to-peer messaging application. Devices communicate directly; there is no central account authority, message host, relay network, public directory or mandatory online service.
 
-## Stage 3: Conversations and realtime encrypted-message transport
+The application is being developed around a shared Rust core, with Android and Linux clients. Nearby discovery and direct communication are intended to use Bluetooth LE, Bluetooth Classic where supported, and Wi-Fi LAN. Remote communication uses direct IP/QUIC where both devices are reachable. QR/contact-card exchange provides an out-of-band way to establish peer identity and connection hints.
 
-Implemented:
-- PostgreSQL-backed accounts and sessions
-- Argon2id password hashing
-- Public/private registration switch
-- First-run administrator bootstrap
-- Login with random bearer tokens; only SHA-256 token hashes are stored
-- Basic in-memory login rate limiting: 10 attempts per source IP per minute
-- Bounded HTTP request/header timeouts
-- Authenticated current-user endpoint and logout
-- Database-backed health check
-- Direct and group conversation creation (2–100 members)
-- PostgreSQL message persistence with per-conversation sequence cursors and paginated history
-- Authenticated WebSocket delivery with session-bound sockets, ping/pong, per-user connection caps and bounded queues
-- Idempotent message submission using client-generated message IDs
-- Opaque ciphertext and nonce storage; server does not decrypt message bodies
+**Important network limitation:** many mobile networks and home routers use carrier-grade NAT or restrictive firewalls. Without relays or rendezvous infrastructure, some remote peers will be unreachable. TomChat must report that honestly rather than silently route through central infrastructure.
 
-Not implemented yet: client-side cryptography and device-key distribution, admin web UI, account recovery, multi-instance WebSocket fan-out, and voice/video calls. Do not expose this service directly to the public internet until TLS, rate limiting, monitoring, and a security review are in place.
+**Current implementation status:** the Android app, Android Keystore identity store, signed contact-card binding, Rust Noise XX core, JNI bridge and direct TCP encrypted-channel classes have been migrated. The Linux client now depends on the same Rust Noise core and includes a loopback direct-TCP handshake/message test. The Linux UI now has an initial desktop Secret Service identity setup command (`/identity`). The shared protocol now includes an Android-compatible application frame codec and a Linux Noise-channel API for sending/receiving those frames; the composer is not yet wired to the peer channel. Android now has a direct Noise-pinned TCP listener/connector, a Compose chat screen wired to encrypted conversations, and encrypted ACK/outbox APIs. Messaging remains gated by the account safety policy; age assurance, physical Android-to-Linux interoperability and full Linux TUI integration remain outstanding. Full app messaging, reliable offline delivery and calling still require integration and real-device validation. The cryptographic prototype is not independently audited and must not be described as production-ready.
 
-## Configuration
+## Repository layout
+- `android/` — Kotlin/Jetpack Compose Android client, direct peer transport and local encrypted storage.
+- `core/noise/` — shared Rust Noise XX protocol engine with Android JNI feature.
+- `tui/` — Rust/Ratatui Linux terminal client and direct TCP transport adapter.
+- `docs/architecture.md` — active peer-to-peer architecture and transport constraints.
+- `docs/tui-roadmap.md` — Linux client development milestones.
+- `docs/account-age-safety.md` — safety requirements.
 
-Required:
-- `TOMCHAT_DATABASE_URL` — PostgreSQL connection string
+## Linux development
 
-Optional:
-- `TOMCHAT_LISTEN_ADDR` — defaults to `127.0.0.1:8080`
-- `TOMCHAT_REGISTRATION_ENABLED` — set to `true` to allow public registration; defaults to private registration
-- `TOMCHAT_BOOTSTRAP_ADMIN_USERNAME` and `TOMCHAT_BOOTSTRAP_ADMIN_PASSWORD` — together, create the first administrator only when the database has no users
-
-The bootstrap credentials are ignored after the first account exists. Remove them from the service environment after successful first startup.
-
-Login rate limiting is per-process and resets on restart. It uses the TCP peer address and deliberately does not trust `X-Forwarded-For`. If deploying behind a reverse proxy or running multiple server instances, configure rate limiting at the trusted proxy/load balancer as well.
-
-## Run
-
+### Debian 13
 ```bash
-export TOMCHAT_DATABASE_URL='postgres://tomchat:password@127.0.0.1:5432/tomchat?sslmode=disable'
-export TOMCHAT_REGISTRATION_ENABLED=false
-export TOMCHAT_BOOTSTRAP_ADMIN_USERNAME=admin
-export TOMCHAT_BOOTSTRAP_ADMIN_PASSWORD='use-a-long-unique-password-here'
-go run ./cmd/tomchat-server
+curl -fsSL https://raw.githubusercontent.com/Spruhantom/tomos-chat-server/migration/tomchat-consolidation/install-debian.sh | bash
 ```
+The installer builds and installs the current terminal UI from source. Review it before running.
 
-The server applies its idempotent schema on startup, including conversations, membership and encrypted message tables.
-
-### Messaging payloads
-
-Message requests contain a client-generated UUID, base64 ciphertext, base64 nonce, encryption version 1 and an optional key ID. The server stores the ciphertext as opaque bytes and never accepts a plaintext message field. Clients must encrypt before sending; the current client has not yet implemented the cryptographic protocol, so this is an E2EE-ready transport boundary rather than a complete E2EE system.
-
-WebSocket events are documented in the TomChat Protocol repository. The current realtime hub is process-local and intended for one home-server instance. PostgreSQL is the source of truth; clients recover missed events by fetching message history. Do not horizontally scale this version without adding shared pub/sub.
-
-## API
-
-- `GET /healthz`
-- `GET /api/v1/version`
-- `GET /api/v1/registration`
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `GET /api/v1/users/me` (Bearer token)
-- `POST /api/v1/auth/logout` (Bearer token)
-- `GET /api/v1/conversations` (Bearer token)
-- `POST /api/v1/conversations` (Bearer token)
-- `GET /api/v1/conversations/{conversationID}/messages?limit=50&before={sequence} or `after={sequence}` (mutually exclusive)` (Bearer token)
-- `POST /api/v1/conversations/{conversationID}/messages` (Bearer token)
-- `GET /api/v1/ws` (WebSocket upgrade with Bearer token)
-
-Passwords must be 12–256 characters. Usernames are 3–32 ASCII letters, digits, dots, underscores, or hyphens. Login sessions expire after 24 hours.
-
-## Development
-
-Requires Go 1.23+ and PostgreSQL 16+.
-
+### Arch Linux
 ```bash
-go mod download
-go test ./...
-go vet ./...
-go run ./cmd/tomchat-server
-```
+sudo pacman -S --needed rust cargo pkgconf
+cd tui
+cargo build --release
+cargo test
+``
 
-## Licence
+## Current limitations
+- Linux and Android have direct Noise transport APIs and loopback tests, plus a shared application-frame golden vector; a physical Android-to-Linux interop test and end-user UI integration remain outstanding.
+- Linux TUI peer/contact management and persistent outbox/ACK handling remain to be implemented.
+- The cryptographic protocol and device-key lifecycle require implementation, independent review and adversarial testing.
+- Voice/video, file transfer, multi-device replication and background delivery are not yet implemented.
+
+## Project principles
+- No central infrastructure or mandatory third-party network service.
+- Peer identity is cryptographic, not a display name or IP address.
+- Encrypt and authenticate content end-to-end before any network transmission.
+- Keep keys and message history under the user's control.
+- Make reachability, trust and delivery status explicit.
+- Preserve privacy by default and minimise metadata.
 
 GPL-3.0-or-later.
