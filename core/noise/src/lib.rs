@@ -8,6 +8,8 @@
 //! Prototype only; not independently audited. Do not enable app messaging
 //! until key provisioning, identity binding, FFI and security review complete.
 
+pub mod protocol;
+
 use snow::{params::NoiseParams, Builder, HandshakeState, TransportState};
 use std::fmt;
 #[cfg(feature = "android-jni")]
