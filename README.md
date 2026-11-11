@@ -33,8 +33,8 @@ cargo test
 ``
 
 ## Current limitations
-- The TUI does not yet communicate with peers.
-- Peer discovery, authenticated direct transport and message synchronisation remain to be implemented.
+- The Linux direct TCP/Noise adapter has a loopback test, but the TUI screens are not yet wired to it.
+- Persistent Linux identity storage, peer discovery and message synchronisation remain to be implemented.
 - The cryptographic protocol and device-key lifecycle require implementation, independent review and adversarial testing.
 - Voice/video, file transfer, multi-device replication and background delivery are not yet implemented.
 
