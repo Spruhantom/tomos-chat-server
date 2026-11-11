@@ -3,13 +3,14 @@ name = "tomchat-tui"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "TomChat terminal client"
+description = "TomChat decentralised peer-to-peer terminal client"
 
 [[bin]]
 name = "tomchat"
 path = "src/main.rs"
 
 [dependencies]
+tomchat-noise = { path = "../core/noise" }
 anyhow = "1"
 crossterm = "0.28"
 ratatui = "0.29"
