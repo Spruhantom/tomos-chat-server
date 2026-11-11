@@ -17,17 +17,26 @@ impl DeviceIdentity {
     pub fn load_or_create() -> Result<Self> {
         let entry = Entry::new(SERVICE, ACCOUNT).context("Could not access the Linux Secret Service. Unlock GNOME Keyring/KWallet and try again.")?;
         match entry.get_password() {
-            Ok(encoded) => Self::decode(&encoded),
+            Ok(mut encoded) => {
+                let identity = Self::decode(&encoded);
+                encoded.zeroize();
+                identity
+            },
             Err(keyring::Error::NoEntry) => {
                 let (mut private_key, public_key) = NoiseSession::generate_static_keypair()
                     .context("Could not generate the device's X25519 identity")?;
-                let encoded = format!("{}{}", hex_encode(&private_key), hex_encode(&public_key));
+                let mut encoded = String::with_capacity(128);
+                hex_append(&mut encoded, &private_key);
+                hex_append(&mut encoded, &public_key);
                 if let Err(error) = entry.set_password(&encoded) {
                     private_key.zeroize();
+                    encoded.zeroize();
                     return Err(error).context("Could not save the device identity to the Linux Secret Service");
                 }
                 private_key.zeroize();
-                Self::decode(&encoded)
+                let identity = Self::decode(&encoded);
+                encoded.zeroize();
+                identity
             }
             Err(error) => Err(error).context("Could not read the device identity from the Linux Secret Service"),
         }
@@ -53,14 +62,12 @@ impl Drop for DeviceIdentity {
     fn drop(&mut self) { self.private_key.zeroize(); }
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
+fn hex_append(output: &mut String, bytes: &[u8]) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
         output.push(HEX[(byte >> 4) as usize] as char);
         output.push(HEX[(byte & 0x0f) as usize] as char);
     }
-    output
 }
 
 fn hex_decode(value: &str) -> Result<Vec<u8>> {
@@ -85,7 +92,10 @@ mod tests {
     #[test]
     fn hex_encoding_round_trips_key_bytes() {
         let source = [0x00, 0x01, 0x7f, 0x80, 0xff];
-        assert_eq!(hex_decode(&hex_encode(&source)).unwrap(), source);
+        let mut encoded = String::new();
+        hex_append(&mut encoded, &source);
+        assert_eq!(hex_decode(&encoded).unwrap(), source);
+        encoded.zeroize();
     }
 
     #[test]
