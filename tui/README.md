@@ -1,8 +1,8 @@
 # TomChat TUI
 
-Rust/Ratatui terminal UI foundation for TomChat. This milestone provides keyboard navigation, a contacts panel, conversation view, composer and local peer-hint configuration.
+Rust/Ratatui terminal UI foundation for TomChat. It provides keyboard navigation, a contacts panel, conversation view, composer and local peer-hint configuration.
 
-**Not a functioning messenger yet:** the TUI does not currently authenticate to the Go server, connect a WebSocket, encrypt or send messages. Do not enter secrets or assume saved contacts are verified.
+**Not a functioning messenger yet:** this build does not discover peers, establish direct connections, encrypt or deliver messages. Do not enter secrets or assume saved contacts are verified.
 
 ## Build on Arch Linux
 
@@ -21,9 +21,7 @@ sudo apt install -y cargo rustc pkg-config build-essential
 cd tui
 cargo build --release
 cargo run --release
-```
-
-For a packaged .deb, see ../packaging/debian/README.md.
+``
 
 ## Controls
 - / enter command/message mode
@@ -36,4 +34,4 @@ For a packaged .deb, see ../packaging/debian/README.md.
 Configuration is stored under XDG_CONFIG_HOME/tomchat/config.json (normally ~/.config/tomchat/config.json) with owner-only file permissions.
 
 ## Planned integration
-The next milestone is authenticated API and WebSocket integration with the self-hosted TomChat Server, followed by client-side encryption. Server transport TLS is not a substitute for E2EE. The client must never submit plaintext message bodies.
+The next milestone is a shared Rust peer core for identity, discovery, direct transport, local encrypted storage and reviewed end-to-end cryptography. Network delivery must remain peer-to-peer; the application must clearly report when a peer cannot be reached.
