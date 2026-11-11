@@ -35,7 +35,7 @@
 - [x] Android encrypted message history and queued outgoing-message persistence.
 - [x] Encrypted ACK frames; Android marks outgoing messages sent only after peer acknowledgement.
 - [x] Android queued-message retry API and receive-side duplicate replacement by stable message ID.
-- [ ] Wire Android retry/receive lifecycle into the Compose UI.
+- [x] Wire Android trusted-contact selection, direct connect/listen, encrypted conversation UI, receive loop, and queued retry into Compose Chats (messaging remains policy-gated).
 - [ ] Implement equivalent durable Linux outbox, ACK processing and reconnect retry.
 - [ ] Complete cross-platform interoperability and adversarial tests.
 
