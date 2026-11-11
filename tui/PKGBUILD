@@ -1,13 +1,13 @@
 pkgname=tomchat-tui
 pkgver=0.1.0
-pkgrel=2
+pkgrel=3
 pkgdesc="TomChat decentralised peer-to-peer terminal client"
 arch=('x86_64' 'aarch64')
 url="https://github.com/Spruhantom/tomos-chat-server"
 license=('GPL3')
 depends=('gcc-libs')
 makedepends=('cargo')
-source=("tomchat::git+https://github.com/Spruhantom/tomos-chat-server.git#branch=migration/tomchat-consolidation")
+source=("tomchat::git+https://github.com/Spruhantom/tomos-chat-server.git#branch=main")
 sha256sums=('SKIP')
 
 prepare() {
